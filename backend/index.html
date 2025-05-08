@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix - Đăng nhập hoặc Đăng ký</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.4.0/dist/axios.min.js"></script>
+    <style>
+        :root {
+            --netflix-red: #e50914;
+            --netflix-dark: #141414;
+            --netflix-light-gray: #333;
+            --netflix-gray: #8c8c8c;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background-color: #000;
+            color: #fff;
+            line-height: 1.5;
+        }
+        
+        .header {
+            padding: 20px 50px;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .logo {
+            height: 45px;
+        }
+        
+        .showcase {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+            background: url('https://via.placeholder.com/1920x1080') no-repeat center center/cover;
+        }
+        
+        .showcase::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background: rgba(0, 0, 0, 0.6);
+            box-shadow: inset 120px 100px 250px #000, inset -120px -100px 250px #000;
+        }
+        
+        .showcase-content {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            margin: 0 auto;
+            max-width: 450px;
+            height: 100%;
+        }
+        
+        .form-container {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 60px 68px 40px;
+            border-radius: 4px;
+        }
+        
+        .form-title {
+            margin-bottom: 28px;
+            font-size: 32px;
+            font-weight: 700;
+            text-align: left;
+        }
+        
+        .form-group {
+            position: relative;
+            margin-bottom: 16px;
+        }
+        
+        .form-input {
+            width: 100%;
+            height: 50px;
+            background-color: #333;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            padding: 16px 20px 0;
+            font-size: 16px;
+            outline: none;
+        }
+        
+        .form-label {
+            position: absolute;
+            left: 20px;
+            top: 15px;
+            color: #8c8c8c;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            pointer-events: none;
+        }
+        
+        .form-input:focus + .form-label,
+        .form-input:not(:placeholder-shown) + .form-label {
+            top: 7px;
+            font-size: 11px;
+        }
+        
+        .btn-login {
+            width: 100%;
+            height: 50px;
+            background-color: var(--netflix-red);
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 700;
+            margin-top: 24px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .btn-login:hover {
+            background-color: #f40612;
+        }
+        
+        .form-help {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--netflix-gray);
+        }
+        
+        .remember {
+            display: flex;
+            align-items: center;
+        }
+        
+        .remember input {
+            margin-right: 5px;
+        }
+        
+        .help a {
+            color: var(--netflix-gray);
+            text-decoration: none;
+        }
+        
+        .help a:hover {
+            text-decoration: underline;
+        }
+        
+        .signup {
+            margin-top: 60px;
+            color: var(--netflix-gray);
+            font-size: 16px;
+        }
+        
+        .signup a {
+            color: #fff;
+            text-decoration: none;
+        }
+        
+        .signup a:hover {
+            text-decoration: underline;
+        }
+        
+        .captcha {
+            margin-top: 10px;
+            color: var(--netflix-gray);
+            font-size: 13px;
+            text-align: left;
+        }
+        
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            color: var(--netflix-gray);
+            cursor: pointer;
+            font-size: 18px;
+            margin: 0 10px;
+            transition: color 0.3s;
+        }
+        
+        .tab.active {
+            color: #fff;
+            font-weight: bold;
+            border-bottom: 2px solid var(--netflix-red);
+        }
+        
+        #login-form, #signup-form, #verify-form, #dashboard {
+            display: none;
+        }
+        
+        #login-form.active, #signup-form.active, #verify-form.active, #dashboard.active {
+            display: block;
+        }
+        
+        .error {
+            color: #e87c03;
+            font-size: 13px;
+            margin-top: 5px;
+            text-align: left;
+        }
+        
+        .dashboard {
+            text-align: center;
+        }
+        
+        .dashboard h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .dashboard button {
+            background-color: var(--netflix-red);
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+        }
+        
+        .dashboard button:hover {
+            background-color: #f40612;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo-container">
+            <svg class="logo" viewBox="0 0 111 30" fill="#e50914">
+                <path d="M105.06233,14.2806261 L110.999156,30 C109.249227,29.7497422 107.500234,29.4366857 105.718437,29.1554972 L102.374168,20.4686475 L98.9371075,28.4375293 C97.2499766,28.1563408 95.5928391,28.061674 93.9057081,27.8432843 L99.9372012,14.0931671 L94.4680851,-5.68434189e-14 L99.5313525,-5.68434189e-14 L102.593495,7.87421502 L105.874965,-5.68434189e-14 L110.999156,-5.68434189e-14 L105.06233,14.2806261 Z M90.4686475,-5.68434189e-14 L85.8749649,-5.68434189e-14 L85.8749649,27.2499766 C87.3746368,27.3437061 88.9371075,27.4055675 90.4686475,27.5930265 L90.4686475,-5.68434189e-14 Z M81.9055207,26.93692 C77.7186241,26.6557316 73.5307901,26.4064111 69.250164,26.3117443 L69.250164,-5.68434189e-14 L73.9366389,-5.68434189e-14 L73.9366389,21.8745899 C76.6248008,21.9373887 79.3120255,22.1557784 81.9055207,22.2804387 L81.9055207,26.93692 Z M64.2496954,10.6561065 L64.2496954,15.3435186 L57.8442216,15.3435186 L57.8442216,25.9996251 L53.2186709,25.9996251 L53.2186709,-5.68434189e-14 L66.3436123,-5.68434189e-14 L66.3436123,4.68741213 L57.8442216,4.68741213 L57.8442216,10.6561065 L64.2496954,10.6561065 Z M45.3435186,4.68741213 L45.3435186,26.2498828 C43.7810479,26.2498828 42.1876465,26.2498828 40.6561065,26.3117443 L40.6561065,4.68741213 L35.8121661,4.68741213 L35.8121661,-5.68434189e-14 L50.2183897,-5.68434189e-14 L50.2183897,4.68741213 L45.3435186,4.68741213 Z M30.749836,15.5928391 C28.687787,15.5928391 26.2498828,15.5928391 24.4999531,15.6875059 L24.4999531,22.6562939 C27.2499766,22.4678976 30,22.2495079 32.7809542,22.1557784 L32.7809542,26.6557316 L19.812541,27.6876933 L19.812541,-5.68434189e-14 L32.7809542,-5.68434189e-14 L32.7809542,4.68741213 L24.4999531,4.68741213 L24.4999531,10.9991564 C26.3126816,10.9991564 29.0936358,10.9054269 30.749836,10.9054269 L30.749836,15.5928391 Z M4.78114163,12.9684132 L4.78114163,29.3429562 C3.09401069,29.5313525 1.59340144,29.7497422 0,30 L0,-5.68434189e-14 L4.4690224,-5.68434189e-14 L10.562377,17.0315868 L10.562377,-5.68434189e-14 L15.2497891,-5.68434189e-14 L15.2497891,28.061674 C13.5935889,28.3437998 11.906458,28.4375293 10.1246602,28.6868498 L4.78114163,12.9684132 Z"></path>
+            </svg>
+        </div>
+    </header>
+
+    <section class="showcase">
+        <div class="showcase-content">
+            <div class="form-container">
+                <div class="tabs">
+                    <div class="tab active" id="login-tab">Đăng nhập</div>
+                    <div class="tab" id="signup-tab">Đăng ký</div>
+                </div>
+                
+                <form id="login-form" class="active">
+                    <h1 class="form-title">Đăng nhập</h1>
+                    <div class="form-group">
+                        <input type="email" class="form-input" id="email" placeholder=" " required>
+                        <label for="email" class="form-label">Email hoặc số điện thoại</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" class="form-input" id="password" placeholder=" " required>
+                        <label for="password" class="form-label">Mật khẩu</label>
+                    </div>
+                    <div class="error" id="login-error"></div>
+                    <button class="btn-login">Đăng nhập</button>
+                    <div class="form-help">
+                        <div class="remember">
+                            <input type="checkbox" id="remember">
+                            <label for="remember">Ghi nhớ tôi</label>
+                        </div>
+                        <div class="help">
+                            <a href="#">Bạn cần trợ giúp?</a>
+                        </div>
+                    </div>
+                    <div class="signup">
+                        Bạn mới tham gia Netflix? <a href="#" id="switch-to-signup">Đăng ký ngay</a>
+                    </div>
+                    <div class="captcha">
+                        Trang này được Google reCAPTCHA bảo vệ để đảm bảo bạn không phải là robot.
+                    </div>
+                </form>
+                
+                <form id="signup-form">
+                    <h1 class="form-title">Đăng ký</h1>
+                    <div class="form-group">
+                        <input type="text" class="form-input" id="fullname" placeholder=" " required>
+                        <label for="fullname" class="form-label">Họ tên</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="email" class="form-input" id="signup-email" placeholder=" " required>
+                        <label for="signup-email" class="form-label">Email</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" class="form-input" id="signup-password" placeholder=" " required>
+                        <label for="signup-password" class="form-label">Mật khẩu</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" class="form-input" id="confirm-password" placeholder=" " required>
+                        <label for="confirm-password" class="form-label">Xác nhận mật khẩu</label>
+                    </div>
+                    <div class="form-group">
+                        <select class="form-input" id="plan" required>
+                            <option value="" disabled selected>Chọn gói</option>
+                            <option value="basic">Basic</option>
+                            <option value="standard">Standard</option>
+                            <option value="premium">Premium</option>
+                        </select>
+                        <label for="plan" class="form-label">Gói</label>
+                    </div>
+                    <div class="error" id="signup-error"></div>
+                    <button class="btn-login">Đăng ký</button>
+                    <div class="form-help">
+                        <div class="remember">
+                            <input type="checkbox" id="terms">
+                            <label for="terms">Tôi đồng ý với các điều khoản</label>
+                        </div>
+                    </div>
+                    <div class="signup">
+                        Đã có tài khoản? <a href="#" id="switch-to-login">Đăng nhập</a>
+                    </div>
+                    <div class="captcha">
+                        Trang này được Google reCAPTCHA bảo vệ để đảm bảo bạn không phải là robot.
+                    </div>
+                </form>
+
+                <form id="verify-form">
+                    <h1 class="form-title">Xác minh Hộ gia đình</h1>
+                    <div class="form-group">
+                        <input type="text" class="form-input" id="verification-code" placeholder=" " required>
+                        <label for="verification-code" class="form-label">Mã xác minh</label>
+                    </div>
+                    <div class="error" id="verify-error"></div>
+                    <button class="btn-login">Xác minh</button>
+                </form>
+
+                <div id="dashboard" class="dashboard">
+                    <h2>Chào mừng bạn đến với Netflix!</h2>
+                    <button id="view-content">Xem nội dung</button>
+                    <button id="admin-panel" style="display: none;">Truy cập Admin Panel</button>
+                    <button id="logout">Đăng xuất</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // API base URL
+        const API_URL = 'http://127.0.0.1:8000';
+
+        // DOM elements
+        const loginTab = document.getElementById('login-tab');
+        const signupTab = document.getElementById('signup-tab');
+        const loginForm = document.getElementById('login-form');
+        const signupForm = document.getElementById('signup-form');
+        const verifyForm = document.getElementById('verify-form');
+        const dashboard = document.getElementById('dashboard');
+        const switchToSignup = document.getElementById('switch-to-signup');
+        const switchToLogin = document.getElementById('switch-to-login');
+        const loginError = document.getElementById('login-error');
+        const signupError = document.getElementById('signup-error');
+        const verifyError = document.getElementById('verify-error');
+        const viewContentBtn = document.getElementById('view-content');
+        const adminPanelBtn = document.getElementById('admin-panel');
+        const logoutBtn = document.getElementById('logout');
+
+        // State
+        let token = localStorage.getItem('token') || '';
+        let userRole = '';
+
+        // Show form
+        function showForm(formId) {
+            [loginForm, signupForm, verifyForm, dashboard].forEach(form => {
+                form.classList.remove('active');
+            });
+            document.getElementById(formId).classList.add('active');
+            loginTab.classList.remove('active');
+            signupTab.classList.remove('active');
+            if (formId === 'login-form') loginTab.classList.add('active');
+            if (formId === 'signup-form') signupTab.classList.add('active');
+        }
+
+        // Check token on load
+        if (token) {
+            fetchUserData();
+        } else {
+            showForm('login-form');
+        }
+
+        // Fetch user data and role
+        async function fetchUserData() {
+            try {
+                const response = await axios.get(`${API_URL}/content`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                userRole = response.data.role || 'user';
+                if (userRole === 'admin') {
+                    adminPanelBtn.style.display = 'inline-block';
+                }
+                showForm('dashboard');
+            } catch (error) {
+                console.error('Error fetching user data:', error);
+                localStorage.removeItem('token');
+                token = '';
+                showForm('login-form');
+            }
+        }
+
+        // Handle login
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            loginError.textContent = '';
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const deviceId = 'device_' + Math.random().toString(36).slice(2);
+
+            const formData = new URLSearchParams();
+            formData.append('username', email);
+            formData.append('password', password);
+            formData.append('client_id', deviceId);
+
+            try {
+                const response = await axios.post(`${API_URL}/login`, formData, {
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                });
+                token = response.data.access_token;
+                localStorage.setItem('token', token);
+                await fetchUserData();
+            } catch (error) {
+                if (error.response?.status === 403 && error.response?.headers['x-requires-verification']) {
+                    showForm('verify-form');
+                } else {
+                    loginError.textContent = error.response?.data?.detail || 'Đăng nhập thất bại';
+                }
+            }
+        });
+
+        // Handle signup
+        signupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            signupError.textContent = '';
+            const fullname = document.getElementById('fullname').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const plan = document.getElementById('plan').value;
+
+            if (password !== confirmPassword) {
+                signupError.textContent = 'Mật khẩu xác nhận không khớp';
+                return;
+            }
+
+            if (!document.getElementById('terms').checked) {
+                signupError.textContent = 'Vui lòng đồng ý với các điều khoản';
+                return;
+            }
+
+            const data = {
+                Email: email,
+                HoTen: fullname,
+                Password: password,
+                plan: plan,
+            };
+
+            try {
+                const response = await axios.post(`${API_URL}/register`, data);
+                alert(response.data.message);
+                showForm('login-form');
+            } catch (error) {
+                signupError.textContent = error.response?.data?.detail || 'Đăng ký thất bại';
+            }
+        });
+
+        // Handle verify household
+        verifyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            verifyError.textContent = '';
+            const verificationCode = document.getElementById('verification-code').value;
+
+            try {
+                const response = await axios.post(
+                    `${API_URL}/verify-household`,
+                    { verification_code: verificationCode },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+                alert(response.data.message);
+                await fetchUserData();
+            } catch (error) {
+                verifyError.textContent = error.response?.data?.detail || 'Xác minh thất bại';
+            }
+        });
+
+        // Handle view content
+        viewContentBtn.addEventListener('click', async () => {
+            try {
+                const response = await axios.get(`${API_URL}/content`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                alert(response.data.message);
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Lỗi truy cập nội dung');
+            }
+        });
+
+        // Handle admin panel
+        adminPanelBtn.addEventListener('click', async () => {
+            try {
+                const response = await axios.get(`${API_URL}/admin`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                alert(response.data.message);
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Lỗi truy cập admin panel');
+            }
+        });
+
+        // Handle logout
+        logoutBtn.addEventListener('click', () => {
+            localStorage.removeItem('token');
+            token = '';
+            userRole = '';
+            adminPanelBtn.style.display = 'none';
+            showForm('login-form');
+        });
+
+        // Tab switching
+        loginTab.addEventListener('click', () => showForm('login-form'));
+        signupTab.addEventListener('click', () => showForm('signup-form'));
+        switchToSignup.addEventListener('click', (e) => {
+            e.preventDefault();
+            showForm('signup-form');
+        });
+        switchToLogin.addEventListener('click', (e) => {
+            e.preventDefault();
+            showForm('login-form');
+        });
+    </script>
+</body>
+</html>
