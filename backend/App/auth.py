@@ -1,29 +1,65 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, url_for
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 import psycopg2
 from .security import hash_password, check_password
 from .database import get_db_connection
-from twilio.rest import Client
-import pyotp
+from psycopg2.extras import RealDictCursor
+import smtplib
+from email.mime.text import MIMEText
 import requests
 import os
 import re
 import logging
-from psycopg2.extras import RealDictCursor
+import uuid
 
 auth_bp = Blueprint('auth', __name__)
 
-# Cấu hình Twilio
-TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
-TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
-client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+# Hàm gửi email xác thực
+def send_verification_email(email, verification_token):
+    smtp_server = os.getenv('SMTP_SERVER')
+    smtp_port = int(os.getenv('SMTP_PORT'))
+    smtp_username = os.getenv('SMTP_USERNAME')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    email_from = os.getenv('EMAIL_FROM')
+
+    # Tạo liên kết xác minh
+    verification_link = f"http://localhost:8000/api/verify_email?token={verification_token}&email={email}"
+
+    # Nội dung email
+    subject = "Xác minh email của bạn"
+    body = f"""
+    Xin chào,
+
+    Cảm ơn bạn đã đăng ký! Vui lòng nhấp vào liên kết dưới đây để xác minh email của bạn:
+
+    {verification_link}
+
+    Nếu bạn không đăng ký, vui lòng bỏ qua email này.
+
+    Trân trọng,
+    Đội ngũ Netflix
+    """
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = email_from
+    msg['To'] = email
+
+    # Gửi email
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.sendmail(email_from, email, msg.as_string())
+        logging.info(f"Verification email sent to {email}")
+    except Exception as e:
+        logging.error(f"Failed to send email to {email}: {str(e)}")
+        raise
 
 # Đăng ký
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """
-    Register a new user
+    Register a new user and send verification email
     ---
     tags:
       - Authentication
@@ -37,7 +73,6 @@ def register():
             - username
             - email
             - password
-            - phone
             - recaptcha_response
           properties:
             username:
@@ -49,23 +84,19 @@ def register():
             password:
               type: string
               example: Password123!
-            phone:
-              type: string
-              example: +1234567890
             recaptcha_response:
               type: string
               example: recaptcha-token
     responses:
       201:
-        description: User registered, OTP sent to phone
+        description: User registered, verification email sent
       400:
         description: Invalid input or reCAPTCHA verification failed
     """
     data = request.get_json()
-    username = data.get('username')
+    username = data.get('username')  # Ánh xạ từ fullname
     email = data.get('email')
     password = data.get('password')
-    phone = data.get('phone')
     recaptcha_response = data.get('recaptcha_response')
 
     # Kiểm tra reCAPTCHA v3
@@ -81,27 +112,27 @@ def register():
     if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email):
         return jsonify({'message': 'Invalid email'}), 400
 
+    # Tạo token xác minh
+    verification_token = str(uuid.uuid4())
+
     # Lưu người dùng vào PostgreSQL
     try:
         conn = get_db_connection()
         c = conn.cursor()
         hashed_password = hash_password(password)
         c.execute(
-            'INSERT INTO users (username, email, password, role, verified, phone, last_ip) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-            (username, email, hashed_password, 'user', 0, phone, request.remote_addr)
+            'INSERT INTO users (username, email, password, role, verified, last_ip) VALUES (%s, %s, %s, %s, %s, %s)',
+            (username, email, hashed_password, 'user', 0, request.remote_addr)
         )
+        # Lưu token xác minh tạm thời (cần bảng mới hoặc cột mới)
+        c.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT')
+        c.execute('UPDATE users SET verification_token = %s WHERE email = %s', (verification_token, email))
         conn.commit()
 
-        # Gửi OTP qua SMS
-        totp = pyotp.TOTP('base32secret3232')
-        otp = totp.now()
-        client.messages.create(
-            body=f"Your OTP is {otp}",
-            from_=TWILIO_PHONE_NUMBER,
-            to=phone
-        )
-        logging.info(f"User {email} registered, OTP sent to {phone}")
-        return jsonify({'message': 'User registered, OTP sent to phone'}), 201
+        # Gửi email xác thực
+        send_verification_email(email, verification_token)
+        logging.info(f"User {email} registered, verification email sent")
+        return jsonify({'message': 'User registered, please check your email to verify'}), 201
     except psycopg2.IntegrityError:
         logging.error(f"Duplicate username or email: {email}")
         return jsonify({'message': 'Username or email already exists'}), 400
@@ -111,51 +142,47 @@ def register():
     finally:
         conn.close()
 
-# Xác minh OTP
-@auth_bp.route('/verify_otp', methods=['POST'])
-def verify_otp():
+# Xác minh email
+@auth_bp.route('/verify_email', methods=['GET'])
+def verify_email():
     """
-    Verify OTP for user registration
+    Verify user email using token
     ---
     tags:
       - Authentication
     parameters:
-      - name: body
-        in: body
+      - name: token
+        in: query
+        type: string
         required: true
-        schema:
-          type: object
-          required:
-            - email
-            - otp
-          properties:
-            email:
-              type: string
-              example: johndoe@example.com
-            otp:
-              type: string
-              example: 123456
+      - name: email
+        in: query
+        type: string
+        required: true
     responses:
       200:
         description: Email verified
       400:
-        description: Invalid OTP
+        description: Invalid token or email
     """
-    data = request.get_json()
-    email = data.get('email')
-    otp = data.get('otp')
+    email = request.args.get('email')
+    token = request.args.get('token')
 
-    totp = pyotp.TOTP('base32secret3232')
-    if totp.verify(otp):
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('UPDATE users SET verified = 1 WHERE email = %s', (email,))
+    conn = get_db_connection()
+    c = conn.cursor(cursor_factory=RealDictCursor)
+    c.execute('SELECT verification_token FROM users WHERE email = %s AND verified = 0', (email,))
+    user = c.fetchone()
+
+    if user and user['verification_token'] == token:
+        c.execute('UPDATE users SET verified = 1, verification_token = NULL WHERE email = %s', (email,))
         conn.commit()
         conn.close()
-        logging.info(f"User {email} verified OTP")
-        return jsonify({'message': 'Email verified'}), 200
-    logging.warning(f"Invalid OTP for {email}")
-    return jsonify({'message': 'Invalid OTP'}), 400
+        logging.info(f"User {email} verified email")
+        return jsonify({'message': 'Email verified successfully'}), 200
+    else:
+        conn.close()
+        logging.warning(f"Invalid verification token for {email}")
+        return jsonify({'message': 'Invalid token or email'}), 400
 
 # Đăng nhập
 @auth_bp.route('/login', methods=['POST'])
@@ -197,13 +224,19 @@ def login():
     user = c.fetchone()
     conn.close()
 
-    if user and check_password(user['password'], password) and user['verified']:
+    if not user:
+        logging.warning(f"Failed login attempt for {email}: User not found")
+        return jsonify({'message': 'Invalid credentials'}), 401
+    if not user['verified']:
+        logging.warning(f"Failed login attempt for {email}: Email not verified")
+        return jsonify({'message': 'Please verify your email before logging in'}), 401
+    if check_password(user['password'], password):
         access_token = create_access_token(identity=email, additional_claims={'role': user['role']})
         refresh_token = create_refresh_token(identity=email)
         logging.info(f"User {email} logged in from IP {request.remote_addr}")
         return jsonify({'access_token': access_token, 'refresh_token': refresh_token}), 200
     logging.warning(f"Failed login attempt for {email} from IP {request.remote_addr}")
-    return jsonify({'message': 'Invalid credentials or unverified email'}), 401
+    return jsonify({'message': 'Invalid credentials'}), 401
 
 # Làm mới token
 @auth_bp.route('/refresh', methods=['POST'])
@@ -224,43 +257,34 @@ def refresh():
     new_access_token = create_access_token(identity=current_user)
     logging.info(f"Token refreshed for {current_user}")
     return jsonify({'access_token': new_access_token}), 200
-
-# MFA
-@auth_bp.route('/mfa', methods=['POST'])
+@auth_bp.route('/check_session', methods=['GET'])
 @jwt_required()
-def mfa():
+def check_session():
     """
-    Multi-Factor Authentication
+    Check user session
     ---
     tags:
-      - Authentication
+      - User
     security:
       - Bearer: []
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          type: object
-          required:
-            - otp
-          properties:
-            otp:
-              type: string
-              example: 123456
     responses:
       200:
-        description: MFA successful
+        description: Session details
       401:
-        description: Invalid OTP
+        description: Unauthorized
     """
-    data = request.get_json()
-    otp = data.get('otp')
+    current_ip = request.remote_addr
+    user_agent = request.headers.get('User-Agent')
     email = get_jwt_identity()
 
-    totp = pyotp.TOTP('base32secret3232')
-    if totp.verify(otp):
-        logging.info(f"MFA successful for {email}")
-        return jsonify({'message': 'MFA successful'}), 200
-    logging.warning(f"Invalid MFA OTP for {email}")
-    return jsonify({'message': 'Invalid OTP'}), 401
+    conn = get_db_connection()
+    c = conn.cursor(cursor_factory=RealDictCursor)
+    c.execute('SELECT last_ip FROM users WHERE email = %s', (email,))
+    result = c.fetchone()
+    last_ip = result['last_ip'] if result else None
+    conn.close()
+
+    if last_ip and last_ip != current_ip:
+        logging.warning(f"Suspicious session for {email}: IP changed from {last_ip} to {current_ip}")
+
+    return jsonify({'ip': current_ip, 'user_agent': user_agent, 'email': email}), 200

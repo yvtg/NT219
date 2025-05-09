@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xác minh email</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+        }
+        h1 {
+            font-size: 32px;
+        }
+        a {
+            color: #e50914;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="message">Đang xác minh email...</h1>
+    <p><a href="index.html">Quay lại trang đăng nhập</a></p>
+
+    <script>
+        // Lấy token và email từ query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const email = urlParams.get('email');
+
+        // Gọi API xác minh
+        if (token && email) {
+            axios.get(`http://localhost:8000/api/verify_email?token=${token}&email=${email}`)
+                .then(response => {
+                    document.getElementById('message').textContent = response.data.message || 'Xác minh thành công!';
+                })
+                .catch(error => {
+                    document.getElementById('message').textContent = error.response?.data?.message || 'Xác minh thất bại';
+                });
+        } else {
+            document.getElementById('message').textContent = 'Liên kết không hợp lệ';
+        }
+    </script>
+</body>
+</html>

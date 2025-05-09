@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Netflix - Đăng nhập hoặc Đăng ký</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://www.google.com/recaptcha/api.js?render=YOUR_SITE_KEY"></script>
     <style>
         :root {
             --netflix-red: #e50914;
@@ -299,6 +301,7 @@
         const switchToSignup = document.getElementById('switch-to-signup');
         const switchToLogin = document.getElementById('switch-to-login');
 
+        // Chuyển tab
         loginTab.addEventListener('click', () => {
             loginTab.classList.add('active');
             signupTab.classList.remove('active');
@@ -321,6 +324,76 @@
         switchToLogin.addEventListener('click', (e) => {
             e.preventDefault();
             loginTab.click();
+        });
+
+        // Hàm xử lý reCAPTCHA
+        const handleRecaptcha = (action) => {
+            return new Promise((resolve) => {
+                window.grecaptcha.ready(() => {
+                    window.grecaptcha.execute('6LfX5DMrAAAAADZLj6p7cUw7susomHB_sfg2P17s', { action }).then((token) => {
+                        resolve(token);
+                    });
+                });
+            });
+        };
+
+        // Xử lý đăng nhập
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await axios.post('http://localhost:8000/api/login', {
+                    email,
+                    password,
+                });
+                alert(response.data.message || 'Đăng nhập thành công');
+                if (response.data.access_token) {
+                    localStorage.setItem('access_token', response.data.access_token);
+                    localStorage.setItem('refresh_token', response.data.refresh_token);
+                    window.location.href = '/main.html'; // Chuyển hướng đến trang Home
+                }
+            } catch (error) {
+                alert(error.response?.data?.message || 'Đăng nhập thất bại');
+            }
+        });
+
+        // Xử lý đăng ký
+        signupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('fullname').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            let recaptchaResponse = '';
+
+            // Kiểm tra mật khẩu khớp
+            if (password !== confirmPassword) {
+                alert('Mật khẩu không khớp!');
+                return;
+            }
+
+            // Xử lý reCAPTCHA
+            try {
+                recaptchaResponse = await handleRecaptcha('register');
+            } catch (error) {
+                alert('Lỗi reCAPTCHA');
+                return;
+            }
+
+            try {
+                const response = await axios.post('http://localhost:8000/api/register', {
+                    username,
+                    email,
+                    password,
+                    recaptcha_response: recaptchaResponse,
+                });
+                alert(response.data.message || 'Đăng ký thành công, vui lòng kiểm tra email để xác minh');
+                loginTab.click(); // Chuyển sang tab Đăng nhập
+            } catch (error) {
+                alert(error.response?.data?.message || 'Đăng ký thất bại');
+            }
         });
     </script>
 </body>

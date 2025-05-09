@@ -3,6 +3,7 @@ from flask_jwt_extended import JWTManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flasgger import Swagger
+from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 
@@ -15,12 +16,13 @@ def create_app():
     # Khởi tạo JWT
     jwt = JWTManager(app)
 
-    # Cấu hình rate limiting thông qua app.config
+    # Cấu hình rate limiting
     app.config['RATELIMIT_KEY_FUNC'] = get_remote_address
     app.config['RATELIMIT_DEFAULTS'] = ["200 per day", "50 per hour"]
-
-    # Khởi tạo Limiter
     limiter = Limiter(app)
+
+    # Kích hoạt CORS
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     # Khởi tạo Flasgger (Swagger UI)
     app.config['SWAGGER'] = {
@@ -34,7 +36,9 @@ def create_app():
     # Đăng ký blueprints
     from .auth import auth_bp
     from .routes import routes_bp
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(routes_bp)
+    from .video import videos_bp
+    app.register_blueprint(auth_bp, url_prefix='/api')
+    app.register_blueprint(routes_bp, url_prefix='/api')
+    app.register_blueprint(videos_bp, url_prefix='/api')
 
     return app

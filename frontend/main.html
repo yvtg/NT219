@@ -453,17 +453,17 @@
         </div>
         <div class="header-right">
             <div class="search-box">
-                <div class="search-icon">&#128269;</div>
+                <div class="search-icon">🔍</div>
                 <input type="text" class="search-input" placeholder="Tiêu đề, diễn viên...">
             </div>
-            <div class="notification-icon">&#128276;</div>
+            <div class="notification-icon">🔔</div>
             <div class="profile-dropdown">
-                <div class="profile-icon">&#128100;</div>
+                <div class="profile-icon">👤</div>
                 <div class="profile-menu">
                     <a href="#">Quản lý hồ sơ</a>
                     <a href="#">Tài khoản</a>
                     <a href="#">Trung tâm trợ giúp</a>
-                    <a href="#">Đăng xuất</a>
+                    <a href="#" id="logout">Đăng xuất</a>
                 </div>
             </div>
         </div>
@@ -471,8 +471,8 @@
 
     <section class="hero-banner">
         <div class="hero-content">
-            <h1 class="hero-title">Phim hành động nổi bật</h1>
-            <p class="hero-description">
+            <h1 class="hero-title" id="hero-title">Phim hành động nổi bật</h1>
+            <p class="hero-description" id="hero-description">
                 Phim mới với những cảnh hành động bùng nổ, được đánh giá cao bởi nhiều nhà phê bình.
                 Đắm chìm vào thế giới siêu anh hùng cùng những kẻ ác khó lường.
             </p>
@@ -489,233 +489,31 @@
 
     <section class="content-row">
         <h2 class="row-title">Phổ biến trên Netflix</h2>
-        <div class="thumbnails">
-            <div class="thumbnail" data-video="video1">
-                <img src="/api/placeholder/300/169?text=1" alt="Video 1">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim hành động 1</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="video2">
-                <img src="/api/placeholder/300/169?text=2" alt="Video 2">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim hài 2</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="video3">
-                <img src="/api/placeholder/300/169?text=3" alt="Video 3">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim tình cảm 3</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="video4">
-                <img src="/api/placeholder/300/169?text=4" alt="Video 4">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim viễn tưởng 4</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="video5">
-                <img src="/api/placeholder/300/169?text=5" alt="Video 5">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim kinh dị 5</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="video6">
-                <img src="/api/placeholder/300/169?text=6" alt="Video 6">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim hoạt hình 6</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <div class="thumbnails" id="popular-videos"></div>
     </section>
 
     <section class="content-row">
         <h2 class="row-title">Xu hướng hiện nay</h2>
-        <div class="thumbnails">
-            <div class="thumbnail" data-video="trend1">
-                <img src="/api/placeholder/300/169?text=Trend1" alt="Trend 1">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Series hấp dẫn 1</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="trend2">
-                <img src="/api/placeholder/300/169?text=Trend2" alt="Trend 2">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Series hấp dẫn 2</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="trend3">
-                <img src="/api/placeholder/300/169?text=Trend3" alt="Trend 3">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Series hấp dẫn 3</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="trend4">
-                <img src="/api/placeholder/300/169?text=Trend4" alt="Trend 4">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Series hấp dẫn 4</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="trend5">
-                <img src="/api/placeholder/300/169?text=Trend5" alt="Trend 5">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Series hấp dẫn 5</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="trend6">
-                <img src="/api/placeholder/300/169?text=Trend6" alt="Trend 6">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Series hấp dẫn 6</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <div class="thumbnails" id="trending-videos"></div>
     </section>
 
     <section class="content-row">
         <h2 class="row-title">Xem lại</h2>
-        <div class="thumbnails">
-            <div class="thumbnail" data-video="rewatch1">
-                <img src="/api/placeholder/300/169?text=Rewatch1" alt="Rewatch 1">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim đã xem 1</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="rewatch2">
-                <img src="/api/placeholder/300/169?text=Rewatch2" alt="Rewatch 2">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim đã xem 2</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="rewatch3">
-                <img src="/api/placeholder/300/169?text=Rewatch3" alt="Rewatch 3">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim đã xem 3</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="rewatch4">
-                <img src="/api/placeholder/300/169?text=Rewatch4" alt="Rewatch 4">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim đã xem 4</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="rewatch5">
-                <img src="/api/placeholder/300/169?text=Rewatch5" alt="Rewatch 5">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim đã xem 5</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-            <div class="thumbnail" data-video="rewatch6">
-                <img src="/api/placeholder/300/169?text=Rewatch6" alt="Rewatch 6">
-                <div class="thumbnail-overlay">
-                    <div class="thumbnail-title">Phim đã xem 6</div>
-                    <div class="thumbnail-actions">
-                        <div class="thumbnail-icon">▶</div>
-                        <div class="thumbnail-icon">+</div>
-                        <div class="thumbnail-icon">👍</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <div class="thumbnails" id="rewatch-videos"></div>
     </section>
 
-    <!-- Video player modal -->
     <div id="videoModal" class="modal">
         <div class="modal-content">
-            <span class="close">&times;</span>
+            <span class="close">×</span>
             <div class="video-player">
                 <video id="videoPlayer" width="100%" controls>
-                    <source src="https://player.vimeo.com/external/194837908.sd.mp4?s=c350076905b78c67f74d7ee39fdb4fef01d12420&profile_id=164" type="video/mp4">
+                    <source id="videoSource" type="video/mp4">
                     Your browser does not support the video tag.
                 </video>
             </div>
             <div class="video-controls">
                 <div class="video-info">
-                    <div class="video-title">Tiêu đề phim</div>
+                    <div class="video-title" id="video-title">Tiêu đề phim</div>
                     <div class="control-buttons">
                         <button class="circular-btn">+</button>
                         <button class="circular-btn">👍</button>
@@ -731,4 +529,136 @@
 
     <footer class="footer">
         <div class="footer-links">
-            <a href="#" class="
+            <a href="#" class="footer-link">Câu hỏi thường gặp</a>
+            <a href="#" class="footer-link">Trung tâm trợ giúp</a>
+            <a href="#" class="footer-link">Điều khoản sử dụng</a>
+            <a href="#" class="footer-link">Quyền riêng tư</a>
+        </div>
+        <div class="copyright">
+            © 2025 Netflix, Inc.
+        </div>
+    </footer>
+
+    <script>
+        // Kiểm tra token khi tải trang
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = 'index.html';
+        }
+
+        // Kiểm tra phiên
+        axios.get('http://localhost:8000/api/check_session', {
+            headers: { Authorization: `Bearer ${token}` }
+        }).catch(() => {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = 'index.html';
+        });
+
+        // Xử lý header scrolled
+        window.addEventListener('scroll', () => {
+            const header = document.querySelector('.header');
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // Xử lý search box
+        const searchIcon = document.querySelector('.search-icon');
+        const searchInput = document.querySelector('.search-input');
+        searchIcon.addEventListener('click', () => {
+            searchInput.classList.toggle('active');
+            if (searchInput.classList.contains('active')) {
+                searchInput.focus();
+            }
+        });
+
+        // Tải danh sách video
+        const loadVideos = async (category, elementId) => {
+            try {
+                const response = await axios.get(`http://localhost:8000/api/videos?category=${category}&limit=6`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                const videos = response.data.videos;
+                const container = document.getElementById(elementId);
+                container.innerHTML = videos.map(video => `
+                    <div class="thumbnail" data-video-id="${video.id}" data-video-url="${video.video_url}">
+                        <img src="${video.thumbnail_url}" alt="${video.title}">
+                        <div class="thumbnail-overlay">
+                            <div class="thumbnail-title">${video.title}</div>
+                            <div class="thumbnail-actions">
+                                <div class="thumbnail-icon">▶</div>
+                                <div class="thumbnail-icon">+</div>
+                                <div class="thumbnail-icon">👍</div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error(`Error loading ${category} videos:`, error);
+            }
+        };
+
+        // Tải video khi trang tải
+        loadVideos('popular', 'popular-videos');
+        loadVideos('trending', 'trending-videos');
+        loadVideos('rewatch', 'rewatch-videos');
+
+        // Xử lý phát video từ hero banner
+        const playFeatured = document.getElementById('play-featured');
+        playFeatured.addEventListener('click', () => {
+            axios.get('http://localhost:8000/api/videos?category=popular&limit=1', {
+                headers: { Authorization: `Bearer ${token}` }
+            }).then(response => {
+                const video = response.data.videos[0];
+                openVideoModal(video.id, video.video_url, video.title);
+            });
+        });
+
+        // Xử lý phát video từ thumbnail
+        document.addEventListener('click', (e) => {
+            const thumbnail = e.target.closest('.thumbnail');
+            if (thumbnail) {
+                const videoId = thumbnail.getAttribute('data-video-id');
+                const videoUrl = thumbnail.getAttribute('data-video-url');
+                const title = thumbnail.querySelector('.thumbnail-title').textContent;
+                openVideoModal(videoId, videoUrl, title);
+            }
+        });
+
+        // Mở modal video
+        const openVideoModal = (videoId, videoUrl, title) => {
+            const modal = document.getElementById('videoModal');
+            const videoPlayer = document.getElementById('videoPlayer');
+            const videoSource = document.getElementById('videoSource');
+            const videoTitle = document.getElementById('video-title');
+            videoSource.src = videoUrl || 'https://player.vimeo.com/external/194837908.sd.mp4';
+            videoTitle.textContent = title || 'Tiêu đề phim';
+            videoPlayer.load();
+            modal.style.display = 'block';
+        };
+
+        // Đóng modal
+        document.querySelector('.close').addEventListener('click', () => {
+            const modal = document.getElementById('videoModal');
+            const videoPlayer = document.getElementById('videoPlayer');
+            videoPlayer.pause();
+            modal.style.display = 'none';
+        });
+
+        // Đăng xuất
+        document.getElementById('logout').addEventListener('click', () => {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = 'index.html';
+        });
+
+        // Khởi tạo video mẫu (chỉ chạy một lần, cần quyền admin)
+        // axios.post('http://localhost:8000/api/init_videos', {}, {
+        //     headers: { Authorization: `Bearer ${token}` }
+        // });
+    </script>
+</body>
+</html>

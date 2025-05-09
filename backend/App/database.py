@@ -10,9 +10,10 @@ def get_db_connection():
     return psycopg2.connect(database_url, cursor_factory=RealDictCursor)
 
 def init_db():
-    """Khởi tạo bảng users trong Neon PostgreSQL"""
+    """Khởi tạo bảng users và videos trong Neon PostgreSQL"""
     conn = get_db_connection()
     c = conn.cursor()
+    # Bảng users (giữ nguyên)
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
@@ -20,11 +21,22 @@ def init_db():
         password TEXT NOT NULL,
         role TEXT NOT NULL,
         verified INTEGER DEFAULT 0,
-        phone TEXT,
-        last_ip TEXT
+        last_ip TEXT,
+        verification_token TEXT
     )''')
-    # Tạo index để tối ưu truy vấn
+    # Bảng videos
+    c.execute('''CREATE TABLE IF NOT EXISTS videos (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        thumbnail_url TEXT,
+        video_url TEXT,
+        category TEXT,
+        is_featured BOOLEAN DEFAULT FALSE
+    )''')
+    # Tạo index
     c.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category)')
     conn.commit()
     conn.close()
