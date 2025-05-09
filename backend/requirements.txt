@@ -1,0 +1,14 @@
+flask==2.3.3
+flask-jwt-extended==4.5.0
+flask-limiter==3.5.0
+argon2-cffi==23.1.0
+psycopg2-binary==2.9.9
+twilio==8.10.0
+pyotp==2.9.0
+python-dotenv==1.0.0
+requests==2.31.0
+python-logstash==0.4.8
+gunicorn==21.2.0
+python-logstash
+flasgger
+flask_restx
