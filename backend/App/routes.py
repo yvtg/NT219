@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from .security import role_required
 from .database import get_db_connection
@@ -146,3 +146,6 @@ def check_session():
         # Gửi OTP để xác minh (tái sử dụng Twilio nếu cần)
 
     return jsonify({'ip': current_ip, 'user_agent': user_agent}), 200
+@routes_bp.route('/placeholder/<int:width>/<int:height>')
+def placeholder(width, height):
+    return send_from_directory('static', 'placeholder.jpg')  # Adjust path as needed

@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import get_jwt, jwt_required
 from .database import get_db_connection
 from psycopg2.extras import RealDictCursor
 import logging
@@ -8,42 +8,26 @@ videos_bp = Blueprint('videos', __name__)
 
 @videos_bp.route('/videos', methods=['GET'])
 @jwt_required()
-def get_videos():
-    """
-    Get list of videos
-    ---
-    tags:
-      - Videos
-    security:
-      - Bearer: []
-    parameters:
-      - name: category
-        in: query
-        type: string
-        description: Filter by category (e.g., popular, trending, rewatch)
-      - name: limit
-        in: query
-        type: integer
-        description: Number of items to return
-    responses:
-      200:
-        description: List of videos
-      401:
-        description: Unauthorized
-    """
-    category = request.args.get('category', 'popular')
-    limit = request.args.get('limit', 6, type=int)
+def add_video():
+    claims = get_jwt()
+    if claims.get('role') != 'production':
+        return jsonify({'message': 'Unauthorized'}), 403
+    data = request.get_json()
+    title = data.get('title')
+    video_url = data.get('video_url')
+    thumbnail_url = data.get('thumbnail_url')
+    category = data.get('category')
 
     conn = get_db_connection()
-    c = conn.cursor(cursor_factory=RealDictCursor)
+    c = conn.cursor()
     c.execute(
-        'SELECT id, title, description, thumbnail_url, video_url FROM videos WHERE category = %s LIMIT %s',
-        (category, limit)
+        'INSERT INTO videos (title, video_url, thumbnail_url, category) VALUES (%s, %s, %s, %s) RETURNING id',
+        (title, video_url, thumbnail_url, category)
     )
-    videos = c.fetchall()
+    video_id = c.fetchone()[0]
+    conn.commit()
     conn.close()
-
-    return jsonify({'videos': videos}), 200
+    return jsonify({'message': 'Video added', 'id': video_id}), 201
 
 # Thêm video mẫu khi khởi tạo (tùy chọn)
 @videos_bp.route('/init_videos', methods=['POST'])

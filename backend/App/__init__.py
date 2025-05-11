@@ -1,11 +1,13 @@
-from flask import Flask
-from flask_jwt_extended import JWTManager
+from flask import Flask, jsonify
+from flask_jwt_extended import JWTManager, get_jwt, get_jwt_identity, jwt_required
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flasgger import Swagger
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
+from psycopg2.extras import RealDictCursor
+from App.database import get_db_connection
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
 

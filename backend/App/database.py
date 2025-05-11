@@ -1,6 +1,8 @@
+from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
+load_dotenv(dotenv_path='D:\\NT219\\NT219\\backend\\config\\.env')
 
 def get_db_connection():
     """Tạo kết nối đến Neon PostgreSQL sử dụng DATABASE_URL"""

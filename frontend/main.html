@@ -126,7 +126,7 @@
             display: none;
             position: absolute;
             right: 0;
-            background-color: rgba(0, 0, 0, 0.9);
+            background-color: rgba(225, 214, 214, 0.9);
             min-width: 200px;
             box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
             z-index: 1;
@@ -433,13 +433,71 @@
         .copyright {
             margin-top: 20px;
         }
+        .modal-2fa {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-2fa-content {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+            max-width: 400px;
+        }
+        .modal-2fa-content img {
+            max-width: 200px;
+        }
+        .close-2fa {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .profile-menu a {
+            display: block;
+            padding: 10px;
+            text-decoration: none;
+            color: black;
+        }
+        .profile-menu a:hover {
+            background: #f0f0f0;
+        }
     </style>
+    <style>
+        .modal-2fa { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-2fa-content { background: white; padding: 20px; border-radius: 5px; text-align: center; max-width: 400px; }
+        .modal-2fa-content img { max-width: 200px; }
+        .close-2fa { position: absolute; top: 10px; right: 20px; font-size: 24px; cursor: pointer; }
+        .profile-menu a { display: block; padding: 10px; text-decoration: none; color: black; }
+        .profile-menu a:hover { background: #f0f0f0; }
+        .admin-panel, .production-panel { display: none; margin: 20px; }
+        .admin-panel table, .production-panel table { width: 100%; border-collapse: collapse; }
+        .admin-panel th, .admin-panel td, .production-panel th, .production-panel td { border: 1px solid #ddd; padding: 8px; }
+        .admin-panel th, .production-panel th { background: #f4f4f4; }
+        .content-row { margin: 20px; }
+        .thumbnails { display: flex; overflow-x: auto; }
+        .thumbnail { margin-right: 10px; cursor: pointer; }
+        .thumbnail img { width: 200px; height: auto; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); }
+        .modal-content { background: white; margin: 5% auto; padding: 20px; width: 80%; max-width: 800px; }
+        .close { cursor: pointer; }
+    </style>
+</head>
 </head>
 <body>
     <header class="header">
         <div class="header-left">
             <svg class="logo" viewBox="0 0 111 30" fill="#e50914">
-                <path d="M105.06233,14.2806261 L110.999156,30 C109.249227,29.7497422 107.500234,29.4366857 105.718437,29.1554972 L102.374168,20.4686475 L98.9371075,28.4375293 C97.2499766,28.1563408 95.5928391,28.061674 93.9057081,27.8432843 L99.9372012,14.0931671 L94.4680851,-5.68434189e-14 L99.5313525,-5.68434189e-14 L102.593495,7.87421502 L105.874965,-5.68434189e-14 L110.999156,-5.68434189e-14 L105.06233,14.2806261 Z M90.4686475,-5.68434189e-14 L85.8749649,-5.68434189e-14 L85.8749649,27.2499766 C87.3746368,27.3437061 88.9371075,27.4055675 90.4686475,27.5930265 L90.4686475,-5.68434189e-14 Z M81.9055207,26.93692 C77.7186241,26.6557316 73.5307901,26.4064111 69.250164,26.3117443 L69.250164,-5.68434189e-14 L73.9366389,-5.68434189e-14 L73.9366389,21.8745899 C76.6248008,21.9373887 79.3120255,22.1557784 81.9055207,22.2804387 L81.9055207,26.93692 Z M64.2496954,10.6561065 L64.2496954,15.3435186 L57.8442216,15.3435186 L57.8442216,25.9996251 L53.2186709,25.9996251 L53.2186709,-5.68434189e-14 L66.3436123,-5.68434189e-14 L66.3436123,4.68741213 L57.8442216,4.68741213 L57.8442216,10.6561065 L64.2496954,10.6561065 Z M45.3435186,4.68741213 L45.3435186,26.2498828 C43.7810479,26.2498828 42.1876465,26.2498828 40.6561065,26.3117443 L40.6561065,4.68741213 L35.8121661,4.68741213 L35.8121661,-5.68434189e-14 L50.2183897,-5.68434189e-14 L50.2183897,4.68741213 L45.3435186,4.68741213 Z M30.749836,15.5928391 C28.687787,15.5928391 26.2498828,15.5928391 24.4999531,15.6875059 L24.4999531,22.6562939 C27.2499766,22.4678976 30,22.2495079 32.7809542,22.1557784 L32.7809542,26.6557316 L19.812541,27.6876933 L19.812541,-5.68434189e-14 L32.7809542,-5.68434189e-14 L32.7809542,4.68741213 L24.4999531,4.68741213 L24.4999531,10.9991564 C26.3126816,10.9991564 29.0936358,10.9054269 30.749836,10.9054269 L30.749836,15.5928391 Z M4.78114163,12.9684132 L4.78114163,29.3429562 C3.09401069,29.5313525 1.59340144,29.7497422 0,30 L0,-5.68434189e-14 L4.4690224,-5.68434189e-14 L10.562377,17.0315868 L10.562377,-5.68434189e-14 L15.2497891,-5.68434189e-14 L15.2497891,28.061674 C13.5935889,28.3437998 11.906458,28.4375293 10.1246602,28.6868498 L4.78114163,12.9684132 Z"></path>
+                <path d="M105.06233,14.2806261..."></path>
             </svg>
             <nav>
                 <ul>
@@ -461,6 +519,7 @@
                 <div class="profile-icon">👤</div>
                 <div class="profile-menu">
                     <a href="#">Quản lý hồ sơ</a>
+                    <a href="#" id="enable-2fa">Kích hoạt 2FA</a>
                     <a href="#">Tài khoản</a>
                     <a href="#">Trung tâm trợ giúp</a>
                     <a href="#" id="logout">Đăng xuất</a>
@@ -474,7 +533,6 @@
             <h1 class="hero-title" id="hero-title">Phim hành động nổi bật</h1>
             <p class="hero-description" id="hero-description">
                 Phim mới với những cảnh hành động bùng nổ, được đánh giá cao bởi nhiều nhà phê bình.
-                Đắm chìm vào thế giới siêu anh hùng cùng những kẻ ác khó lường.
             </p>
             <div class="btn-container">
                 <button class="btn btn-play" id="play-featured">
@@ -487,19 +545,49 @@
         </div>
     </section>
 
-    <section class="content-row">
+    <section class="content-row" id="popular-section">
         <h2 class="row-title">Phổ biến trên Netflix</h2>
         <div class="thumbnails" id="popular-videos"></div>
     </section>
 
-    <section class="content-row">
+    <section class="content-row" id="trending-section">
         <h2 class="row-title">Xu hướng hiện nay</h2>
         <div class="thumbnails" id="trending-videos"></div>
     </section>
 
-    <section class="content-row">
+    <section class="content-row" id="rewatch-section">
         <h2 class="row-title">Xem lại</h2>
         <div class="thumbnails" id="rewatch-videos"></div>
+    </section>
+
+    <section class="admin-panel" id="admin-panel">
+        <h2>Quản trị người dùng</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Tên người dùng</th>
+                    <th>Vai trò</th>
+                    <th>Đã xác minh</th>
+                </tr>
+            </thead>
+            <tbody id="user-list"></tbody>
+        </table>
+    </section>
+
+    <section class="production-panel" id="production-panel">
+        <h2>Quản lý nội dung</h2>
+        <button id="add-video">Thêm video mới</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tiêu đề</th>
+                    <th>Danh mục</th>
+                    <th>Hành động</th>
+                </tr>
+            </thead>
+            <tbody id="video-list"></tbody>
+        </table>
     </section>
 
     <div id="videoModal" class="modal">
@@ -527,6 +615,17 @@
         </div>
     </div>
 
+    <div id="modal-2fa" class="modal-2fa">
+        <div class="modal-2fa-content">
+            <span class="close-2fa">×</span>
+            <h2>Kích hoạt 2FA</h2>
+            <p>Quét mã QR bằng ứng dụng xác thực (Google Authenticator, Authy, v.v.)</p>
+            <img id="qrcode" src="" alt="2FA QR Code">
+            <p>Hoặc nhập mã: <span id="2fa-secret"></span></p>
+            <p id="2fa-message" style="color: red;"></p>
+        </div>
+    </div>
+
     <footer class="footer">
         <div class="footer-links">
             <a href="#" class="footer-link">Câu hỏi thường gặp</a>
@@ -540,22 +639,134 @@
     </footer>
 
     <script>
-        // Kiểm tra token khi tải trang
         const token = localStorage.getItem('access_token');
         if (!token) {
-            window.location.href = 'index.html';
+            window.location.href = './index.html';
         }
 
-        // Kiểm tra phiên
-        axios.get('http://localhost:8000/api/check_session', {
-            headers: { Authorization: `Bearer ${token}` }
-        }).catch(() => {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
-            window.location.href = 'index.html';
+        let userRole = 'user'; // Mặc định
+
+        async function checkSession() {
+            try {
+                const response = await axios.get('http://localhost:8000/api/check_session', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                userRole = response.data.role || 'user';
+                document.getElementById('enable-2fa').style.display = response.data.totp_secret ? 'none' : 'block';
+                updateInterfaceByRole();
+                loadContentByRole();
+            } catch (error) {
+                if (error.response?.status === 401) {
+                    try {
+                        const refreshResponse = await axios.post('http://localhost:8000/api/refresh', {}, {
+                            headers: { Authorization: `Bearer ${localStorage.getItem('refresh_token')}` }
+                        });
+                        localStorage.setItem('access_token', refreshResponse.data.access_token);
+                        window.location.reload();
+                    } catch (refreshError) {
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('refresh_token');
+                        window.location.href = './index.html';
+                    }
+                }
+            }
+        }
+
+        function updateInterfaceByRole() {
+            const adminPanel = document.getElementById('admin-panel');
+            const productionPanel = document.getElementById('production-panel');
+            const popularSection = document.getElementById('popular-section');
+            const trendingSection = document.getElementById('trending-section');
+            const rewatchSection = document.getElementById('rewatch-section');
+
+            if (userRole === 'admin') {
+                adminPanel.style.display = 'block';
+                popularSection.style.display = 'none';
+                trendingSection.style.display = 'none';
+                rewatchSection.style.display = 'none';
+            } else if (userRole === 'production') {
+                productionPanel.style.display = 'block';
+                popularSection.style.display = 'block';
+                trendingSection.style.display = 'block';
+                rewatchSection.style.display = 'block';
+            } else {
+                popularSection.style.display = 'block';
+                trendingSection.style.display = 'block';
+                rewatchSection.style.display = 'block';
+            }
+        }
+
+        async function loadContentByRole() {
+            try {
+                const response = await axios.get('http://localhost:8000/api/content', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                const content = response.data.content;
+
+                if (userRole === 'admin') {
+                    const userList = document.getElementById('user-list');
+                    userList.innerHTML = content.map(user => `
+                        <tr>
+                            <td>${user.email}</td>
+                            <td>${user.username}</td>
+                            <td>${user.role}</td>
+                            <td>${user.verified ? 'Có' : 'Không'}</td>
+                        </tr>
+                    `).join('');
+                } else if (userRole === 'production') {
+                    const videoList = document.getElementById('video-list');
+                    videoList.innerHTML = content.map(video => `
+                        <tr>
+                            <td>${video.title}</td>
+                            <td>${video.category}</td>
+                            <td><button onclick="editVideo(${video.id})">Sửa</button></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    loadVideos('popular', 'popular-videos');
+                    loadVideos('trending', 'trending-videos');
+                    loadVideos('rewatch', 'rewatch-videos');
+                }
+            } catch (error) {
+                console.error('Error loading content:', error);
+            }
+        }
+
+        document.getElementById('enable-2fa').addEventListener('click', async () => {
+            const modal = document.getElementById('modal-2fa');
+            const message = document.getElementById('2fa-message');
+            try {
+                const response = await axios.post('http://localhost:8000/api/enable-2fa', {}, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                document.getElementById('qrcode').src = response.data.qr_code;
+                document.getElementById('2fa-secret').textContent = response.data.secret;
+                modal.style.display = 'flex';
+                message.textContent = '';
+                document.getElementById('enable-2fa').style.display = 'none';
+            } catch (error) {
+                message.textContent = error.response?.data?.message || 'Lỗi khi kích hoạt 2FA.';
+            }
         });
 
-        // Xử lý header scrolled
+        document.querySelector('.close-2fa').addEventListener('click', () => {
+            document.getElementById('modal-2fa').style.display = 'none';
+        });
+
+        document.getElementById('logout').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                await axios.post('http://localhost:8000/api/logout', {}, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            } catch (error) {
+                console.error('Error logging out:', error);
+            }
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = './index.html';
+        });
+
         window.addEventListener('scroll', () => {
             const header = document.querySelector('.header');
             if (window.scrollY > 50) {
@@ -565,7 +776,6 @@
             }
         });
 
-        // Xử lý search box
         const searchIcon = document.querySelector('.search-icon');
         const searchInput = document.querySelector('.search-input');
         searchIcon.addEventListener('click', () => {
@@ -575,7 +785,6 @@
             }
         });
 
-        // Tải danh sách video
         const loadVideos = async (category, elementId) => {
             try {
                 const response = await axios.get(`http://localhost:8000/api/videos?category=${category}&limit=6`, {
@@ -584,8 +793,8 @@
                 const videos = response.data.videos;
                 const container = document.getElementById(elementId);
                 container.innerHTML = videos.map(video => `
-                    <div class="thumbnail" data-video-id="${video.id}" data-video-url="${video.video_url}">
-                        <img src="${video.thumbnail_url}" alt="${video.title}">
+                    <div class="thumbnail" data-video-id="${video.id}" data-video-url="${video.video_url || 'https://player.vimeo.com/external/194837908.sd.mp4'}">
+                        <img src="${video.thumbnail_url || '/static/placeholder.jpg'}" alt="${video.title}">
                         <div class="thumbnail-overlay">
                             <div class="thumbnail-title">${video.title}</div>
                             <div class="thumbnail-actions">
@@ -601,12 +810,6 @@
             }
         };
 
-        // Tải video khi trang tải
-        loadVideos('popular', 'popular-videos');
-        loadVideos('trending', 'trending-videos');
-        loadVideos('rewatch', 'rewatch-videos');
-
-        // Xử lý phát video từ hero banner
         const playFeatured = document.getElementById('play-featured');
         playFeatured.addEventListener('click', () => {
             axios.get('http://localhost:8000/api/videos?category=popular&limit=1', {
@@ -617,7 +820,6 @@
             });
         });
 
-        // Xử lý phát video từ thumbnail
         document.addEventListener('click', (e) => {
             const thumbnail = e.target.closest('.thumbnail');
             if (thumbnail) {
@@ -628,7 +830,6 @@
             }
         });
 
-        // Mở modal video
         const openVideoModal = (videoId, videoUrl, title) => {
             const modal = document.getElementById('videoModal');
             const videoPlayer = document.getElementById('videoPlayer');
@@ -638,9 +839,23 @@
             videoTitle.textContent = title || 'Tiêu đề phim';
             videoPlayer.load();
             modal.style.display = 'block';
+
+            videoPlayer.addEventListener('timeupdate', () => {
+                const percent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+                document.querySelector('.progress-bar').style.width = `${percent}%`;
+            });
+
+            const progressContainer = document.querySelector('.progress-container');
+            const progressBar = document.querySelector('.progress-bar');
+            progressContainer.addEventListener('click', (e) => {
+                const rect = progressContainer.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const width = rect.width;
+                const newTime = (clickX / width) * videoPlayer.duration;
+                videoPlayer.currentTime = newTime;
+            });
         };
 
-        // Đóng modal
         document.querySelector('.close').addEventListener('click', () => {
             const modal = document.getElementById('videoModal');
             const videoPlayer = document.getElementById('videoPlayer');
@@ -648,17 +863,15 @@
             modal.style.display = 'none';
         });
 
-        // Đăng xuất
-        document.getElementById('logout').addEventListener('click', () => {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
-            window.location.href = 'index.html';
+        function editVideo(videoId) {
+            alert(`Chỉnh sửa video ID: ${videoId} (Chưa triển khai)`);
+        }
+
+        document.getElementById('add-video').addEventListener('click', () => {
+            alert('Thêm video mới (Chưa triển khai)');
         });
 
-        // Khởi tạo video mẫu (chỉ chạy một lần, cần quyền admin)
-        // axios.post('http://localhost:8000/api/init_videos', {}, {
-        //     headers: { Authorization: `Bearer ${token}` }
-        // });
+        checkSession();
     </script>
 </body>
 </html>
