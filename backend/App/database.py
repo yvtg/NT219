@@ -24,7 +24,8 @@ def init_db():
         role TEXT NOT NULL,
         verified INTEGER DEFAULT 0,
         last_ip TEXT,
-        verification_token TEXT
+        verification_token TEXT,
+        totp_secret TEXT
     )''')
     # Bảng videos
     c.execute('''CREATE TABLE IF NOT EXISTS videos (

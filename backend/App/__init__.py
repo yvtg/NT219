@@ -24,8 +24,10 @@ def create_app():
     limiter = Limiter(app)
 
     # Kích hoạt CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
-
+    CORS(app,
+     origins=["http://127.0.0.1:5501"],
+     supports_credentials=True,
+     allow_headers=["Authorization", "Content-Type","x-csrf-token"])
     # Khởi tạo Flasgger (Swagger UI)
     app.config['SWAGGER'] = {
         'title': 'API Documentation',
@@ -39,8 +41,10 @@ def create_app():
     from .auth import auth_bp
     from .routes import routes_bp
     from .video import videos_bp
-    app.register_blueprint(auth_bp, url_prefix='/api')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(routes_bp, url_prefix='/api')
     app.register_blueprint(videos_bp, url_prefix='/api')
-
+    app.config['JWT_TOKEN_LOCATION'] = ['headers']
+    app.config['JWT_COOKIE_SECURE'] = False  # True nếu dùng HTTPS
+    app.config['JWT_COOKIE_CSRF_PROTECT'] = False
     return app

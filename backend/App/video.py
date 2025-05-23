@@ -6,9 +6,40 @@ import logging
 
 videos_bp = Blueprint('videos', __name__)
 
-@videos_bp.route('/videos', methods=['GET'])
+@videos_bp.route('/videos', methods=['POST'])
 @jwt_required()
 def add_video():
+    """
+    Add a new video
+    ---
+    tags:
+      - Videos
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          id: Video
+          required:
+            - title
+            - video_url
+            - thumbnail_url
+            - category
+          properties:
+            title:
+              type: string
+            video_url:
+              type: string
+            thumbnail_url:
+              type: string
+            category:
+              type: string
+    responses:
+      201:
+        description: Video added successfully
+      403:
+        description: Unauthorized
+    """
     claims = get_jwt()
     if claims.get('role') != 'production':
         return jsonify({'message': 'Unauthorized'}), 403

@@ -12,3 +12,5 @@ gunicorn==21.2.0
 python-logstash
 flasgger
 flask_restx
+webauthn
+flask-cors

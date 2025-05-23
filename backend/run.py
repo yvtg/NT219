@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 from flask_restx import Api  # Import Flask-RESTX APIpp
 from App.routes import routes_bp
+from App.auth import auth_bp
+
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), 'config', '.env'))
 
 if __name__ == '__main__':
@@ -18,4 +20,4 @@ if __name__ == '__main__':
     api = Api(app, doc='/docs')  # Tạo giao diện Swagger UI tại /docs
 
     # Chạy ứng dụng Flask
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    app.run(debug=True, host='127.0.0.1', port=8000)

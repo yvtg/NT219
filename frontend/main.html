@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Netflix - Trang chủ</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <style>
         :root {
             --netflix-red: #e50914;
@@ -490,6 +492,183 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); }
         .modal-content { background: white; margin: 5% auto; padding: 20px; width: 80%; max-width: 800px; }
         .close { cursor: pointer; }
+        .admin-panel, .production-panel {
+    display: none;
+    margin: 40px 4%;
+    padding: 20px;
+    background-color: var(--netflix-dark);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.admin-panel h2, .production-panel h2 {
+    font-size: 1.8vw;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.admin-panel table, .production-panel table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background-color: #1a1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.admin-panel th, .admin-panel td, .production-panel th, .production-panel td {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 14px;
+    color: #e5e5e5;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.admin-panel th, .production-panel th {
+    background-color: var(--netflix-red);
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 13px;
+}
+
+.admin-panel tr:last-child td, .production-panel tr:last-child td {
+    border-bottom: none;
+}
+
+.admin-panel tr:hover, .production-panel tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    transition: background-color 0.3s;
+}
+
+.production-panel button {
+    padding: 8px 16px;
+    background-color: var(--netflix-red);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.production-panel button:hover {
+    background-color: #c40812;
+    transform: translateY(-2px);
+}
+
+#add-video {
+    display: inline-block;
+    margin-bottom: 20px;
+    padding: 10px 20px;
+    background-color: #fff;
+    color: var(--netflix-dark);
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+#add-video:hover {
+    background-color: var(--netflix-red);
+    color: #fff;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .admin-panel h2, .production-panel h2 {
+        font-size: 5vw;
+    }
+
+    .admin-panel th, .admin-panel td, .production-panel th, .production-panel td {
+        font-size: 12px;
+        padding: 10px;
+    }
+
+    .production-panel button, #add-video {
+        font-size: 12px;
+        padding: 8px 14px;
+    }
+
+    .admin-panel, .production-panel {
+        margin: 20px 2%;
+        padding: 15px;
+    }
+}
+.modal-2fa {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+.modal-2fa-content {
+    background: var(--netflix-dark);
+    padding: 30px;
+    border-radius: 8px;
+    text-align: center;
+    max-width: 450px;
+    color: #e5e5e5;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.modal-2fa-content h2 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    color: #fff;
+}
+.modal-2fa-content img {
+    max-width: 200px;
+    margin: 15px 0;
+}
+.modal-2fa-content input {
+    padding: 10px;
+    width: 100%;
+    margin: 10px 0;
+    border: 1px solid var(--netflix-gray);
+    border-radius: 4px;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 14px;
+}
+.modal-2fa-content button {
+    padding: 10px 20px;
+    background-color: var(--netflix-red);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.3s;
+}
+.modal-2fa-content button:hover {
+    background-color: #c40812;
+}
+.close-2fa {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 24px;
+    color: var(--netflix-gray);
+    cursor: pointer;
+    transition: color 0.3s;
+}
+.close-2fa:hover {
+    color: #fff;
+}
+#2fa-message {
+    color: var(--netflix-red);
+    margin-top: 10px;
+}
     </style>
 </head>
 </head>
@@ -639,39 +818,103 @@
     </footer>
 
     <script>
+        let userRole = 'user'; // Mặc định
+    async function checkSession() {
+        console.log('Checking session...');
+        
         const token = localStorage.getItem('access_token');
+        console.log('Access token available:', token ? 'Yes' : 'No');
+        
         if (!token) {
-            window.location.href = './index.html';
+            console.log('No access token found');
+            redirectToLogin();
+            return;
         }
 
-        let userRole = 'user'; // Mặc định
+        try {
+            const response = await axios.get('http://127.0.0.1:8000/api/auth/check_session', {
+                withCredentials: true,
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
 
-        async function checkSession() {
-            try {
-                const response = await axios.get('http://localhost:8000/api/check_session', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                userRole = response.data.role || 'user';
-                document.getElementById('enable-2fa').style.display = response.data.totp_secret ? 'none' : 'block';
+            alert('Session check successful:', response.data);
+            
+            // Update user role and interface
+            userRole = response.data.role || 'user';
+            
+            // Update 2FA button visibility if element exists
+            const enable2faElement = document.getElementById('enable-2fa');
+            if (enable2faElement) {
+                enable2faElement.style.display = response.data.totp_secret ? 'none' : 'block';
+            }
+            
+            // Update interface based on role
+            if (typeof updateInterfaceByRole === 'function') {
                 updateInterfaceByRole();
-                loadContentByRole();
-            } catch (error) {
-                if (error.response?.status === 401) {
-                    try {
-                        const refreshResponse = await axios.post('http://localhost:8000/api/refresh', {}, {
-                            headers: { Authorization: `Bearer ${localStorage.getItem('refresh_token')}` }
-                        });
-                        localStorage.setItem('access_token', refreshResponse.data.access_token);
-                        window.location.reload();
-                    } catch (refreshError) {
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('refresh_token');
-                        window.location.href = './index.html';
+            }
+            
+            if (typeof loadContentByRole === 'function') {
+                loadContentByRole(token);
+            }
+
+        } catch (error) {
+            alert('Session check error : ', error.response || error);
+
+            if (error.response?.status === 401) {
+                console.log('Access token expired, attempting refresh...');
+                
+                const refreshToken = localStorage.getItem('refresh_token');
+                if (!refreshToken) {
+                    console.log('No refresh token available');
+                    redirectToLogin();
+                    return;
+                }
+
+                try {
+                    const refreshResponse = await axios.post('http://127.0.0.1:8000/api/auth/refresh', {}, {
+                        headers: { 
+                            Authorization: `Bearer ${refreshToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    alert('Token refresh successful');
+                    
+                    // Store new tokens
+                    localStorage.setItem('access_token', refreshResponse.data.access_token);
+                    if (refreshResponse.data.refresh_token) {
+                        localStorage.setItem('refresh_token', refreshResponse.data.refresh_token);
                     }
+
+                    // Retry the original request with the new token
+                    window.location.reload();
+
+                } catch (refreshError) {
+                    alert('Token refresh failed:', refreshError);
+                    console.error('Token refresh failed:', refreshError);
+                    redirectToLogin();
+                }
+            } else {
+                alert('Session check failed:', error.message);
+                // Don't redirect immediately on network errors
+                if (error.response) {
+                    redirectToLogin();
                 }
             }
         }
+    }
 
+    function redirectToLogin() {
+        console.log('Redirecting to login page');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('csrf_token');
+        localStorage.removeItem('userRole');
+        window.location.href = './index.html';
+    }
         function updateInterfaceByRole() {
             const adminPanel = document.getElementById('admin-panel');
             const productionPanel = document.getElementById('production-panel');
@@ -684,21 +927,24 @@
                 popularSection.style.display = 'none';
                 trendingSection.style.display = 'none';
                 rewatchSection.style.display = 'none';
+                productionPanel.style.display = 'none';
             } else if (userRole === 'production') {
-                productionPanel.style.display = 'block';
+                productionPanel.style.display = 'none';
                 popularSection.style.display = 'block';
                 trendingSection.style.display = 'block';
                 rewatchSection.style.display = 'block';
+                productionPanel.style.display = 'block';
             } else {
                 popularSection.style.display = 'block';
                 trendingSection.style.display = 'block';
                 rewatchSection.style.display = 'block';
+                productionPanel.style.display = 'none';
             }
         }
 
-        async function loadContentByRole() {
+        async function loadContentByRole(token) {
             try {
-                const response = await axios.get('http://localhost:8000/api/content', {
+                const response = await axios.get('http://localhost:8000/api/auth/api/content', {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const content = response.data.content;
@@ -723,9 +969,9 @@
                         </tr>
                     `).join('');
                 } else {
-                    loadVideos('popular', 'popular-videos');
-                    loadVideos('trending', 'trending-videos');
-                    loadVideos('rewatch', 'rewatch-videos');
+                    loadVideos('popular', 'popular-videos',token);
+                    loadVideos('trending', 'trending-videos',token);
+                    loadVideos('rewatch', 'rewatch-videos',token);
                 }
             } catch (error) {
                 console.error('Error loading content:', error);
@@ -785,7 +1031,7 @@
             }
         });
 
-        const loadVideos = async (category, elementId) => {
+        const loadVideos = async (category, elementId,token) => {
             try {
                 const response = await axios.get(`http://localhost:8000/api/videos?category=${category}&limit=6`, {
                     headers: { Authorization: `Bearer ${token}` }
@@ -870,7 +1116,15 @@
         document.getElementById('add-video').addEventListener('click', () => {
             alert('Thêm video mới (Chưa triển khai)');
         });
-
+        const params = new URLSearchParams(window.location.search);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        if (accessToken && refreshToken) {
+        localStorage.setItem('access_token', accessToken);
+        localStorage.setItem('refresh_token', refreshToken);
+        // Xóa query string khỏi URL cho đẹp
+        window.history.replaceState({}, document.title, window.location.pathname);
+        }
         checkSession();
     </script>
 </body>

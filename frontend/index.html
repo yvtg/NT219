@@ -4,217 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Netflix - Đăng nhập hoặc Đăng ký</title>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        :root {
-            --netflix-red: #e50914;
-            --netflix-dark: #141414;
-            --netflix-light-gray: #333;
-            --netflix-gray: #8c8c8c;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        }
-        
-        body {
-            background-color: #000;
-            color: #fff;
-            line-height: 1.5;
-        }
-        
-        .header {
-            padding: 20px 50px;
-            position: relative;
-            z-index: 10;
-        }
-        
-        .logo {
-            height: 45px;
-        }
-        
-        .showcase {
-            width: 100%;
-            height: 100vh;
-            position: relative;
-            background: url('/api/placeholder/1920/1080') no-repeat center center/cover;
-        }
-        
-        .showcase::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            background: rgba(0, 0, 0, 0.6);
-            box-shadow: inset 120px 100px 250px #000, inset -120px -100px 250px #000;
-        }
-        
-        .showcase-content {
-            position: relative;
-            z-index: 2;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            margin: 0 auto;
-            max-width: 450px;
-            height: 100%;
-        }
-        
-        .form-container {
-            width: 100%;
-            background: rgba(0, 0, 0, 0.75);
-            padding: 60px 68px 40px;
-            border-radius: 4px;
-        }
-        
-        .form-title {
-            margin-bottom: 28px;
-            font-size: 32px;
-            font-weight: 700;
-            text-align: left;
-        }
-        
-        .form-group {
-            position: relative;
-            margin-bottom: 16px;
-        }
-        
-        .form-input {
-            width: 100%;
-            height: 50px;
-            background-color: #333;
-            border: none;
-            border-radius: 4px;
-            color: #fff;
-            padding: 16px 20px 0;
-            font-size: 16px;
-            outline: none;
-        }
-        
-        .form-label {
-            position: absolute;
-            left: 20px;
-            top: 15px;
-            color: #8c8c8c;
-            transition: all 0.2s ease;
-            font-size: 14px;
-            pointer-events: none;
-        }
-        
-        .form-input:focus + .form-label,
-        .form-input:not(:placeholder-shown) + .form-label {
-            top: 7px;
-            font-size: 11px;
-        }
-        
-        .btn-login {
-            width: 100%;
-            height: 50px;
-            background-color: var(--netflix-red);
-            border: none;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 16px;
-            font-weight: 700;
-            margin-top: 24px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        .btn-login:hover {
-            background-color: #f40612;
-        }
-        
-        .btn-login:disabled {
-            background-color: #a1a1a1;
-            cursor: not-allowed;
-        }
-        
-        .form-help {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 10px;
-            font-size: 13px;
-            color: var(--netflix-gray);
-        }
-        
-        .remember {
-            display: flex;
-            align-items: center;
-        }
-        
-        .remember input {
-            margin-right: 5px;
-        }
-        
-        .help a {
-            color: var(--netflix-gray);
-            text-decoration: none;
-        }
-        
-        .help a:hover {
-            text-decoration: underline;
-        }
-        
-        .signup {
-            margin-top: 60px;
-            color: var(--netflix-gray);
-            font-size: 16px;
-        }
-        
-        .signup a {
-            color: #fff;
-            text-decoration: none;
-        }
-        
-        .signup a:hover {
-            text-decoration: underline;
-        }
-        
-        .tabs {
-            display: flex;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        
-        .tab {
-            padding: 10px 20px;
-            color: var(--netflix-gray);
-            cursor: pointer;
-            font-size: 18px;
-            margin: 0 10px;
-            transition: color 0.3s;
-        }
-        
-        .tab.active {
-            color: #fff;
-            font-weight: bold;
-            border-bottom: 2px solid var(--netflix-red);
-        }
-        
-        #login-form, #signup-form {
-            display: none;
-        }
-        
-        #login-form.active, #signup-form.active {
-            display: block;
-        }
-        
-        .error-message {
-            color: var(--netflix-red);
-            font-size: 13px;
-            margin-top: 5px;
-            text-align: left;
-        }
-    </style>
+    <link rel="stylesheet" href="./style.css">
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
     <header class="header">
@@ -231,7 +22,11 @@
                 <div class="tabs">
                     <div class="tab active" id="login-tab">Đăng nhập</div>
                     <div class="tab" id="signup-tab">Đăng ký</div>
+                    <div class="tab" id="magic-tab">Magic Link</div>
                 </div>
+
+                <!-- CSRF Token Status -->
+                <div id="csrf-status" class="csrf-status"></div>
 
                 <form id="login-form" class="active">
                     <h1 class="form-title">Đăng nhập</h1>
@@ -242,11 +37,15 @@
                     <div class="form-group">
                         <input type="password" class="form-input" id="password" placeholder=" " required>
                         <label for="password" class="form-label">Mật khẩu</label>
+                        <button type="button" class="toggle-password" id="toggle-password">
+                            <span class="show-password">👁️</span>
+                        </button>
                     </div>
-                    <div class="form-group">
-                        <input type="text" class="form-input" id="totp_code" placeholder="Mã 2FA (nếu có)">
+                    <div class="form-group" id="totp-container" style="display: none;">
+                        <input type="text" class="form-input" id="totp_code" placeholder=" ">
+                        <label for="totp_code" class="form-label">Mã 2FA (nếu có)</label>
                     </div>
-                    <div id="recaptcha" class="g-recaptcha" data-sitekey="your_recaptcha_site_key"></div>
+                    <div id="recaptcha" class="g-recaptcha" style="display: none;" data-sitekey="your_recaptcha_v2_site_key"></div>
                     <div id="login-error" class="error-message"></div>
                     <button type="submit" class="btn-login">Đăng nhập</button>
                     <div class="form-help">
@@ -276,10 +75,16 @@
                     <div class="form-group">
                         <input type="password" class="form-input" id="signup-password" placeholder=" " required>
                         <label for="signup-password" class="form-label">Mật khẩu</label>
+                        <button type="button" class="toggle-password" id="toggle-signup-password">
+                            <span class="show-password">👁️</span>
+                        </button>
                     </div>
                     <div class="form-group">
                         <input type="password" class="form-input" id="confirm-password" placeholder=" " required>
                         <label for="confirm-password" class="form-label">Xác nhận mật khẩu</label>
+                        <button type="button" class="toggle-password" id="toggle-confirm-password">
+                            <span class="show-password">👁️</span>
+                        </button>
                     </div>
                     <div id="signup-error" class="error-message"></div>
                     <div class="form-group">
@@ -291,169 +96,21 @@
                         Đã có tài khoản? <a href="#" id="switch-to-login">Đăng nhập</a>
                     </div>
                 </form>
+
+                <form id="magic-link-form">
+                    <h1 class="form-title">Đăng nhập bằng Magic Link</h1>
+                    <div class="form-group">
+                        <input type="email" class="form-input" id="magic-email" placeholder=" " required>
+                        <label for="magic-email" class="form-label">Email</label>
+                    </div>
+                    <div id="magic-error" class="error-message"></div>
+                    <div id="magic-success" class="success-message"></div>
+                    <button type="submit" class="btn-login">Gửi Magic Link</button>
+                </form>
             </div>
         </div>
     </section>
 
-    <script>
-        const loginTab = document.getElementById('login-tab');
-        const signupTab = document.getElementById('signup-tab');
-        const loginForm = document.getElementById('login-form');
-        const signupForm = document.getElementById('signup-form');
-        const switchToSignup = document.getElementById('switch-to-signup');
-        const switchToLogin = document.getElementById('switch-to-login');
-        const loginError = document.getElementById('login-error');
-        const signupError = document.getElementById('signup-error');
-        const totpInput = document.getElementById('totp_code');
-        const recaptchaDiv = document.getElementById('recaptcha');
-
-        // Ẩn TOTP và reCAPTCHA mặc định
-        totpInput.style.display = 'none';
-        recaptchaDiv.style.display = 'none';
-
-        // Chuyển tab
-        loginTab.addEventListener('click', () => {
-            loginTab.classList.add('active');
-            signupTab.classList.remove('active');
-            loginForm.classList.add('active');
-            signupForm.classList.remove('active');
-            loginError.textContent = '';
-            signupError.textContent = '';
-            totpInput.style.display = 'none';
-            recaptchaDiv.style.display = 'none';
-        });
-
-        signupTab.addEventListener('click', () => {
-            signupTab.classList.add('active');
-            loginTab.classList.remove('active');
-            signupForm.classList.add('active');
-            loginForm.classList.remove('active');
-            loginError.textContent = '';
-            signupError.textContent = '';
-        });
-
-        switchToSignup.addEventListener('click', (e) => {
-            e.preventDefault();
-            signupTab.click();
-        });
-
-        switchToLogin.addEventListener('click', (e) => {
-            e.preventDefault();
-            loginTab.click();
-        });
-
-        // Xử lý đăng nhập
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            loginError.textContent = '';
-
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const totp_code = document.getElementById('totp_code').value;
-            const loginButton = loginForm.querySelector('.btn-login');
-            let recaptcha_response = '';
-            if (recaptchaDiv.style.display === 'block') {
-                recaptcha_response = grecaptcha.getResponse();
-            }
-
-            if (!email || !password) {
-                loginError.textContent = 'Vui lòng điền đầy đủ thông tin!';
-                return;
-            }
-
-            // Kiểm tra định dạng email
-            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailPattern.test(email)) {
-                loginError.textContent = 'Email không hợp lệ!';
-                return;
-            }
-
-            // Vô hiệu hóa nút trong khi xử lý
-            loginButton.disabled = true;
-            loginButton.textContent = 'Đang xử lý...';
-
-            try {
-                const response = await axios.post('http://localhost:8000/api/login', {
-                    email,
-                    password,
-                    totp_code,
-                    recaptcha_response
-                });
-
-                alert(response.data.message || 'Đăng nhập thành công');
-                localStorage.setItem('access_token', response.data.access_token);
-                localStorage.setItem('refresh_token', response.data.refresh_token);
-                window.location.href = './main.html'; // Chuyển hướng đến trang Home
-            } catch (error) {
-                console.error('Login error:', error);
-                loginError.textContent = error.response?.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.';
-                if (error.response?.data?.captcha_required) {
-                    recaptchaDiv.style.display = 'block';
-                }
-                if (error.response?.data['2fa_required']) {
-                    totpInput.style.display = 'block';
-                }
-            } finally {
-                loginButton.disabled = false;
-                loginButton.textContent = 'Đăng nhập';
-            }
-        });
-
-        // Xử lý đăng ký
-        signupForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            signupError.textContent = '';
-
-            const username = document.getElementById('fullname').value;
-            const email = document.getElementById('signup-email').value;
-            const password = document.getElementById('signup-password').value;
-            const confirmPassword = document.getElementById('confirm-password').value;
-            const agreeTerms = document.getElementById('terms').checked;
-            const signupButton = signupForm.querySelector('.btn-login');
-
-            if (!username || !email || !password || !confirmPassword) {
-                signupError.textContent = 'Vui lòng điền đầy đủ thông tin!';
-                return;
-            }
-
-            if (password !== confirmPassword) {
-                signupError.textContent = 'Mật khẩu xác nhận không khớp!';
-                return;
-            }
-
-            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailPattern.test(email)) {
-                signupError.textContent = 'Email không hợp lệ!';
-                return;
-            }
-
-            if (!agreeTerms) {
-                signupError.textContent = 'Vui lòng đồng ý với điều khoản sử dụng!';
-                return;
-            }
-
-            signupButton.disabled = true;
-            signupButton.textContent = 'Đang xử lý...';
-
-            try {
-                const response = await axios.post('http://localhost:8000/api/register', {
-                    username,
-                    email,
-                    password
-                }, {
-                    headers: { 'Content-Type': 'application/json' }
-                });
-
-                alert(response.data.message || 'Đăng ký thành công, vui lòng kiểm tra email để xác minh');
-                loginTab.click(); // Chuyển về tab đăng nhập
-            } catch (error) {
-                console.error('Register error:', error);
-                signupError.textContent = error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại sau.';
-            } finally {
-                signupButton.disabled = false;
-                signupButton.textContent = 'Đăng ký';
-            }
-        });
-    </script>
+    <script src="./auth.js"></script>
 </body>
 </html>
