@@ -25,7 +25,8 @@ def init_db():
         verified INTEGER DEFAULT 0,
         last_ip TEXT,
         verification_token TEXT,
-        totp_secret TEXT
+        totp_secret TEXT,
+        is_2fa_enabled BOOLEAN DEFAULT FALSE
     )''')
     # Bảng videos
     c.execute('''CREATE TABLE IF NOT EXISTS videos (

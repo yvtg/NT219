@@ -15,22 +15,26 @@ document.addEventListener('DOMContentLoaded', function() {
     const totpContainer = document.getElementById('totp-container');
     const recaptchaDiv = document.getElementById('recaptcha');
     const csrfStatus = document.getElementById('csrf-status');
-    
+    const modal2FA = document.getElementById('modal-2fa');
+    const closeModal = document.querySelector('.close-modal');
+    const verify2FAButton = document.getElementById('verify-2fa');
+    const twoFAMessage = document.getElementById('2fa-message');
+
     // Password toggle elements
     const togglePassword = document.getElementById('toggle-password');
     const toggleSignupPassword = document.getElementById('toggle-signup-password');
     const toggleConfirmPassword = document.getElementById('toggle-confirm-password');
-    
+
     // CSRF token state
     let csrfToken = null;
     let csrfTokenReady = false;
-    
+
     // reCAPTCHA variable declaration
     const grecaptcha = window.grecaptcha;
-    
+
     // Fetch CSRF token on page load
     fetchCsrfToken();
-    
+
     // Tab switching
     loginTab.addEventListener('click', () => switchTab('login'));
     signupTab.addEventListener('click', () => switchTab('signup'));
@@ -43,31 +47,39 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         switchTab('login');
     });
-    
+
+    // Close 2FA modal
+    if (closeModal) {
+        closeModal.addEventListener('click', () => {
+            modal2FA.style.display = 'none';
+            twoFAMessage.textContent = '';
+        });
+    }
+
     // Password visibility toggle
     togglePassword.addEventListener('click', () => {
         togglePasswordVisibility('password', togglePassword);
     });
-    
+
     toggleSignupPassword.addEventListener('click', () => {
         togglePasswordVisibility('signup-password', toggleSignupPassword);
     });
-    
+
     toggleConfirmPassword.addEventListener('click', () => {
         togglePasswordVisibility('confirm-password', toggleConfirmPassword);
     });
-    
+
     // Form submissions
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         loginError.textContent = '';
 
-        const email = document.getElementById('email').value;
+        const email = sanitizeInput(document.getElementById('email').value);
         const password = document.getElementById('password').value;
         const totp_code = document.getElementById('totp_code').value;
         const loginButton = loginForm.querySelector('.btn-login');
         let recaptcha_response = '';
-        
+
         if (recaptchaDiv.style.display === 'block') {
             recaptcha_response = grecaptcha.getResponse();
         }
@@ -83,25 +95,19 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        if (!(await checkCsrfToken())) return;
+
         loginButton.disabled = true;
         loginButton.textContent = 'Đang xử lý...';
 
         try {
-            // First, get a CSRF token
-            const csrfResponse = await fetch('http://127.0.0.1:8000/api/auth/get-csrf-token', {
-                method: 'GET',
-                credentials: 'include'
-            });
-            
-            if (!csrfResponse.ok) {
-                throw new Error('Failed to get CSRF token');
+            const csrfToken = getCookie('csrf_token');
+            console.log('CSRF Token (Login):', csrfToken);
+
+            if (!csrfToken) {
+                throw new Error('CSRF token không tồn tại.');
             }
 
-            // Get the CSRF token from cookies
-            const csrfToken = getCookie('csrf_token');
-            console.log('Got CSRF token:', csrfToken);
-
-            // Now make the login request with the CSRF token
             const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
                 method: 'POST',
                 headers: {
@@ -111,7 +117,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({
                     email,
                     password,
-                    totp_code,
+                    totp_code: totp_code || undefined,
                     recaptcha_response
                 }),
                 credentials: 'include'
@@ -121,17 +127,22 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Login response:', data);
 
             if (!response.ok) {
-                throw new Error(data.message || 'Login failed');
+                if (data.requires_2fa) {
+                    totpContainer.style.display = 'block';
+                    recaptchaDiv.style.display = 'block';
+                    loginError.textContent = 'Vui lòng nhập mã 2FA';
+                    loginButton.disabled = false;
+                    loginButton.textContent = 'Đăng nhập';
+                    return;
+                }
+                throw new Error(data.message || 'Đăng nhập thất bại');
             }
 
-            // Store tokens
             localStorage.setItem('access_token', data.access_token);
             localStorage.setItem('refresh_token', data.refresh_token);
             if (data.csrf_token) {
                 localStorage.setItem('csrf_token', data.csrf_token);
             }
-
-            // Store user role if provided
             if (data.role) {
                 localStorage.setItem('userRole', data.role);
             }
@@ -141,9 +152,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Login error:', error);
-            loginError.textContent = error.message || 'Login failed. Please try again.';
+            loginError.textContent = escapeHTML(error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
             
-            if (error.response?.status === 429 || (error.message || '').includes('CAPTCHA')) {
+            if (error.message.includes('CSRF token invalid')) {
+                loginError.textContent = 'CSRF token không hợp lệ. Đang làm mới...';
+                const refreshed = await refreshCsrfToken();
+                loginError.textContent += refreshed ? ' Vui lòng thử lại.' : ' Không thể làm mới token.';
+            } else if (error.response?.status === 429 || error.message.includes('CAPTCHA')) {
                 recaptchaDiv.style.display = 'block';
             }
         } finally {
@@ -154,31 +169,64 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    
+
+    // Verify 2FA code
+    if (verify2FAButton) {
+        verify2FAButton.addEventListener('click', async () => {
+            const code = sanitizeInput(document.getElementById('verify-2fa-code').value);
+            const token = localStorage.getItem('access_token');
+
+            if (!code) {
+                twoFAMessage.textContent = 'Vui lòng nhập mã 2FA.';
+                return;
+            }
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/auth/verify-2fa', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': getCookie('csrf_token'),
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ totp_code: code }),
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+                console.log('2FA verify response:', data);
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Xác minh 2FA thất bại.');
+                }
+
+                if (data.success) {
+                    modal2FA.style.display = 'none';
+                    alert('2FA đã được kích hoạt thành công!');
+                }
+            } catch (error) {
+                console.error('2FA verify error:', error);
+                twoFAMessage.textContent = escapeHTML(error.message || 'Mã 2FA không hợp lệ.');
+            }
+        });
+    }
+
     signupForm.addEventListener('submit', handleSignup);
     magicForm.addEventListener('submit', handleMagicLink);
-    
-    // Functions
-    
-    /**
-     * Switch between tabs (login, signup, magic link)
-     */
+
+    // Functions (your existing functions remain unchanged)
     function switchTab(tab) {
-        // Reset all tabs and forms
         [loginTab, signupTab, magicTab].forEach(t => t.classList.remove('active'));
         [loginForm, signupForm, magicForm].forEach(f => f.classList.remove('active'));
         
-        // Reset error messages
         loginError.textContent = '';
         signupError.textContent = '';
         magicError.textContent = '';
         magicSuccess.textContent = '';
         
-        // Hide special elements
         totpContainer.style.display = 'none';
         recaptchaDiv.style.display = 'none';
         
-        // Activate the selected tab
         if (tab === 'login') {
             loginTab.classList.add('active');
             loginForm.classList.add('active');
@@ -190,22 +238,14 @@ document.addEventListener('DOMContentLoaded', function() {
             magicForm.classList.add('active');
         }
     }
-    
-    /**
-     * Toggle password field visibility
-     */
+
     function togglePasswordVisibility(inputId, toggleButton) {
         const passwordInput = document.getElementById(inputId);
         const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
         passwordInput.setAttribute('type', type);
-        
-        // Change the eye icon (in a real app, you'd use proper icons)
         toggleButton.querySelector('span').textContent = type === 'password' ? '👁️' : '👁️‍🗨️';
     }
-    
-    /**
-     * Fetch CSRF token from the server
-     */
+
     async function fetchCsrfToken() {
         try {
             csrfStatus.innerHTML = '<div style="color: #f5f5f5;">Đang lấy CSRF token...</div>';
@@ -230,11 +270,9 @@ document.addEventListener('DOMContentLoaded', function() {
             csrfTokenReady = true;
             csrfStatus.innerHTML = '<div style="color: #2ecc71;">CSRF token đã sẵn sàng</div>';
             
-            // Enable all form buttons
             document.querySelectorAll('.btn-login').forEach(btn => {
                 btn.disabled = false;
             });
-            
         } catch (error) {
             console.error('Failed to fetch CSRF token:', error);
             csrfStatus.innerHTML = `
@@ -246,7 +284,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `;
             
-            // Disable all form buttons
             document.querySelectorAll('.btn-login').forEach(btn => {
                 btn.disabled = true;
             });
@@ -254,10 +291,7 @@ document.addEventListener('DOMContentLoaded', function() {
             csrfTokenReady = false;
         }
     }
-    
-    /**
-     * Check if CSRF token is valid and refresh if needed
-     */
+
     async function checkCsrfToken() {
         if (!csrfTokenReady) {
             console.log('CSRF token not ready, fetching...');
@@ -273,10 +307,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         return true;
     }
-    
-    /**
-     * Refresh CSRF token if needed
-     */
+
     async function refreshCsrfToken() {
         try {
             await fetchCsrfToken();
@@ -287,37 +318,25 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
     }
-    
-    /**
-     * Get cookie by name
-     */
+
     function getCookie(name) {
         const value = `; ${document.cookie}`;
         const parts = value.split(`; ${name}=`);
         if (parts.length === 2) return parts.pop().split(';').shift();
         return '';
     }
-    
-    /**
-     * Sanitize input to prevent XSS
-     */
+
     function sanitizeInput(value) {
         if (!value) return value;
         return value.replace(/[<>[\]\\/;`]/g, '');
     }
-    
-    /**
-     * Escape HTML to prevent XSS
-     */
+
     function escapeHTML(str) {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
     }
-    
-    /**
-     * Check if password is strong enough
-     */
+
     function isStrongPassword(password, username, email) {
         if (password.length < 12) 
             return { valid: false, message: 'Mật khẩu phải dài ít nhất 12 ký tự' };
@@ -348,18 +367,13 @@ document.addEventListener('DOMContentLoaded', function() {
         
         return { valid: true, message: '' };
     }
-    
-    /**
-     * Handle signup form submission
-     */
+
     async function handleSignup(e) {
         e.preventDefault();
         signupError.textContent = '';
         
-        // Check CSRF token
         if (!(await checkCsrfToken())) return;
         
-        // Get form data
         const username = sanitizeInput(document.getElementById('fullname').value);
         const email = sanitizeInput(document.getElementById('signup-email').value);
         const password = document.getElementById('signup-password').value;
@@ -367,7 +381,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const agreeTerms = document.getElementById('terms').checked;
         const signupButton = signupForm.querySelector('.btn-login');
         
-        // Validate inputs
         if (!username || !email || !password || !confirmPassword) {
             signupError.textContent = 'Vui lòng điền đầy đủ thông tin!';
             return;
@@ -384,7 +397,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Check password strength
         const passwordCheck = isStrongPassword(password, username, email);
         if (!passwordCheck.valid) {
             signupError.textContent = passwordCheck.message;
@@ -396,19 +408,16 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Validate username format
         const usernamePattern = /^[a-zA-Z0-9_.]{3,50}$/;
         if (!usernamePattern.test(username)) {
             signupError.textContent = 'Tên người dùng chỉ được chứa chữ, số, dấu chấm, dấu gạch dưới, dài 3-50 ký tự!';
             return;
         }
         
-        // Disable button and show loading state
         signupButton.disabled = true;
         signupButton.textContent = 'Đang xử lý...';
         
         try {
-            // Get current CSRF token
             const csrfToken = getCookie('csrf_token');
             console.log('CSRF Token (Signup):', csrfToken);
             
@@ -419,7 +428,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Send signup request
             const response = await fetch('http://127.0.0.1:8000/api/auth/register', {
                 method: 'POST',
                 headers: {
@@ -440,7 +448,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(data.message || 'Đăng ký thất bại');
             }
             
-            // Handle successful registration
             alert(data.message || 'Đăng ký thành công, vui lòng kiểm tra email để xác minh');
             switchTab('login');
             
@@ -448,7 +455,6 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Register error:', error);
             signupError.textContent = escapeHTML(error.message || 'Đăng ký thất bại.');
             
-            // Handle CSRF token errors
             if (error.message.includes('CSRF token invalid')) {
                 signupError.textContent = 'CSRF token không hợp lệ. Đang làm mới...';
                 const refreshed = await refreshCsrfToken();
@@ -456,28 +462,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
         } finally {
-            // Reset button state
             signupButton.disabled = false;
             signupButton.textContent = 'Đăng ký';
         }
     }
-    
-    /**
-     * Handle magic link form submission
-     */
+
     async function handleMagicLink(e) {
         e.preventDefault();
         magicError.textContent = '';
         magicSuccess.textContent = '';
         
-        // Check CSRF token
         if (!(await checkCsrfToken())) return;
         
-        // Get form data
         const email = sanitizeInput(document.getElementById('magic-email').value);
         const magicButton = magicForm.querySelector('.btn-login');
         
-        // Validate email
         if (!email) {
             magicError.textContent = 'Vui lòng nhập email!';
             return;
@@ -489,12 +488,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Disable button and show loading state
         magicButton.disabled = true;
         magicButton.textContent = 'Đang xử lý...';
         
         try {
-            // Get current CSRF token
             const csrfToken = getCookie('csrf_token');
             console.log('CSRF Token (Magic):', csrfToken);
             
@@ -505,7 +502,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Send magic link request
             const response = await fetch('http://127.0.0.1:8000/api/auth/request-magic-link', {
                 method: 'POST',
                 headers: {
@@ -524,7 +520,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(data.message || 'Gửi magic link thất bại');
             }
             
-            // Show success message
             magicSuccess.textContent = data.message || 'Magic link đã được gửi!';
             document.getElementById('magic-email').value = '';
             
@@ -532,7 +527,6 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Magic link error:', error);
             magicError.textContent = escapeHTML(error.message || 'Gửi magic link thất bại.');
             
-            // Handle CSRF token errors
             if (error.message.includes('CSRF token invalid')) {
                 magicError.textContent = 'CSRF token không hợp lệ. Đang làm mới...';
                 const refreshed = await refreshCsrfToken();
@@ -540,7 +534,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
         } finally {
-            // Reset button state
             magicButton.disabled = false;
             magicButton.textContent = 'Gửi Magic Link';
         }
@@ -550,21 +543,25 @@ document.addEventListener('DOMContentLoaded', function() {
 async function checkSessionForLoginPage() {
     const token = localStorage.getItem('access_token');
     if (!token) return;
-    
+
     try {
-        const response = await axios.get('http://127.0.0.1:8000/api/auth/check_session', {
-            headers: { 
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
+        const response = await fetch('http://127.0.0.1:8000/api/auth/check_session', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': getCookie('csrf_token')
+            },
+            credentials: 'include'
         });
-        
-        // Token hợp lệ, chuyển đến trang chính
-        console.log('Valid token found, redirecting to main page');
-        window.location.href = './main.html';
-        
+
+        if (response.ok) {
+            console.log('Valid token found, redirecting to main page');
+            window.location.href = './main.html';
+        } else {
+            throw new Error('Invalid token');
+        }
     } catch (error) {
-        // Token không hợp lệ, xóa và ở lại trang login
         console.log('Invalid token, clearing and staying on login page');
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
@@ -572,25 +569,82 @@ async function checkSessionForLoginPage() {
     }
 }
 
-function initializePage() {
+async function check2FAStatus() {
+    const token = localStorage.getItem('access_token');
+    if (!token) return false;
+
+    try {
+        const response = await fetch('http://127.0.0.1:8000/api/auth/2fa-status', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': getCookie('csrf_token'),
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
+
+        const data = await response.json();
+        return data.is_2fa_enabled || false;
+    } catch (error) {
+        console.error('Error checking 2FA status:', error);
+        return false;
+    }
+}
+async function checkEnable2FA(){
+    
+}
+async function initializePage() {
+    const isEnable=await checkEnable2FA();
+    if(isEnable){
+        document.getElementById('enable-2fa').style.display = 'none';
+    }
     const currentPage = window.location.pathname;
     console.log('Current page:', currentPage);
-    
+
     if (currentPage.includes('index.html') || currentPage === '/' || currentPage.includes('login')) {
-        // Trang login - kiểm tra nếu đã đăng nhập thì chuyển hướng
         const token = localStorage.getItem('access_token');
         if (token) {
             console.log('Already logged in, checking session validity...');
-            // Kiểm tra token có hợp lệ không trước khi redirect
             checkSessionForLoginPage();
         } else {
             console.log('Not logged in, staying on login page');
         }
     } else {
-        // Các trang khác - kiểm tra session
         console.log('Protected page, checking session...');
         checkSession();
     }
 }
 
 document.addEventListener('DOMContentLoaded', initializePage);
+
+// Placeholder for checkSession (for protected pages)
+async function checkSession() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = './index.html';
+        return;
+    }
+
+    try {
+        const response = await fetch('http://127.0.0.1:8000/api/auth/check_session', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': getCookie('csrf_token')
+            },
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error('Invalid session');
+        }
+    } catch (error) {
+        console.log('Session invalid, redirecting to login');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('csrf_token');
+        window.location.href = './index.html';
+    }
+}

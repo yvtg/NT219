@@ -363,20 +363,39 @@ def verify_email():
 def enable_2fa():
     """
     Kích hoạt 2FA cho người dùng
+    ---
+    tags:
+      - Authentication
+    responses:
+      200:
+        description: 2FA enabled successfully
+        content:
+          application/json:
+            example:
+              message: 2FA enabled, scan the QR code with your authenticator app
+              qr_code: data:image/png;base64,...
+              secret: JBSWY3DPEHPK3PXP
+      400:
+        description: User not found, not verified, or 2FA already enabled
+      500:
+        description: Server error
     """
     email = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT verified FROM users WHERE email = %s', (email,))
+        c.execute('SELECT verified, is_2fa_enabled FROM users WHERE email = %s', (email,))
         user = c.fetchone()
         if not user or not user['verified']:
             return jsonify({'message': 'User not found or not verified'}), 400
+        if user.get('is_2fa_enabled'):
+            return jsonify({'message': '2FA is already enabled'}), 400
 
         totp_secret = pyotp.random_base32()
         c.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT')
-        c.execute('UPDATE users SET totp_secret = %s WHERE email = %s', (totp_secret, email))
+        c.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE')
+        c.execute('UPDATE users SET totp_secret = %s, is_2fa_enabled = TRUE WHERE email = %s', (totp_secret, email))
         conn.commit()
 
         totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=email, issuer_name='Netflix')
@@ -400,6 +419,110 @@ def enable_2fa():
         return jsonify({'message': 'Failed to enable 2FA'}), 500
     finally:
         conn.close()
+@auth_bp.route('/verify-2fa', methods=['POST'])
+@jwt_required()
+def verify_2fa():
+    """
+    Xác thực mã 2FA từ người dùng
+    ---
+    tags:
+      - Authentication
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            totp_code:
+              type: string
+              description: 6-digit TOTP code from authenticator app
+              example: "123456"
+    responses:
+      200:
+        description: 2FA verified successfully
+        content:
+          application/json:
+            example:
+              message: 2FA verified successfully
+              is_2fa_enabled: true
+      400:
+        description: Invalid or missing TOTP code
+      404:
+        description: User not found or 2FA not enabled
+      500:
+        description: Server error
+    """
+    email = get_jwt_identity()
+    data = request.get_json()
+    if not data or 'totp_code' not in data:
+        return jsonify({'message': 'Invalid or missing TOTP code'}), 400
+    
+    totp_code = data['totp_code'].strip()
+    if len(totp_code) != 6 or not totp_code.isdigit():
+        return jsonify({'message': 'Invalid TOTP code'}), 400
+
+    try:
+        conn = get_db_connection()
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('SELECT verified, totp_secret, is_2fa_enabled FROM users WHERE email = %s', (email,))
+        user = c.fetchone()
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        if not user['verified']:
+            return jsonify({'message': 'User not verified'}), 400
+        if not user['totp_secret'] or not user['is_2fa_enabled']:
+            return jsonify({'message': '2FA not enabled for this user'}), 404
+
+        totp = pyotp.TOTP(user['totp_secret'])
+        if not totp.verify(totp_code):
+            return jsonify({'message': 'Invalid TOTP code'}), 400
+
+        conn.commit()
+        conn.close()
+        return jsonify({'message': '2FA verified successfully', 'is_2fa_enabled': True}), 200
+    except Exception as e:
+        logging.error(f"Error verifying 2FA for {email}: {str(e)}")
+        return jsonify({'message': 'Failed to verify 2FA'}), 500
+    finally:
+        conn.close()
+@auth_bp.route('/2fa-status', methods=['GET'])
+@jwt_required()
+def check_2fa_status():
+    """
+    Kiểm tra trạng thái 2FA của người dùng
+    ---
+    tags:
+      - Authentication
+    responses:
+      200:
+        description: Returns 2FA status
+        content:
+          application/json:
+            example:
+              is_2fa_enabled: true
+      404:
+        description: User not found
+      500:
+        description: Server error
+    """
+    email = get_jwt_identity()
+
+    try:
+        conn = get_db_connection()
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (email,))
+        user = c.fetchone()
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        return jsonify({'is_2fa_enabled': user['is_2fa_enabled'] or False}), 200
+    except Exception as e:
+        logging.error(f"Error checking 2FA status for {email}: {str(e)}")
+        return jsonify({'message': 'Failed to check 2FA status'}), 500
+    finally:
+        conn.close()
+    
 def send_device_verification_email(email, fingerprint):
     """Gửi email xác minh thiết bị lạ."""
     token = ts.dumps({"email": email, "fingerprint": fingerprint}, salt='device-verify')
@@ -437,6 +560,50 @@ def get_device_fingerprint(request):
     # Có thể thu thập thêm: screen resolution, timezone từ frontend
     fingerprint = hashlib.sha256(f"{user_agent}:{accept_language}".encode()).hexdigest()
     return fingerprint
+@auth_bp.route('/disable-2fa', methods=['POST'])
+@jwt_required()
+def disable_2fa():
+    """
+    Tắt 2FA cho người dùng
+    ---
+    tags:
+      - Authentication
+    responses:
+      200:
+        description: 2FA disabled successfully
+        content:
+          application/json:
+            example:
+              message: 2FA disabled successfully
+      400:
+        description: 2FA not enabled
+      404:
+        description: User not found
+      500:
+        description: Server error
+    """
+    email = get_jwt_identity()
+
+    try:
+        conn = get_db_connection()
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (email,))
+        user = c.fetchone()
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        if not user['is_2fa_enabled']:
+            return jsonify({'message': '2FA not enabled'}), 400
+
+        c.execute('UPDATE users SET is_2fa_enabled = FALSE, totp_secret = NULL WHERE email = %s', (email,))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': '2FA disabled successfully'}), 200
+    except Exception as e:
+        logging.error(f"Error disabling 2FA for {email}: {str(e)}")
+        return jsonify({'message': 'Failed to disable 2FA'}), 500
+    finally:
+        conn.close()
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """
@@ -493,7 +660,11 @@ def login():
             logging.warning(f"Failed login attempt for {email}")
             return jsonify({'message': 'Invalid credentials or unverified email'}), 401
 
-        if user.get('totp_secret'):
+        if user.get('is_2fa_enabled') and not totp_code:
+            redis_client.incr(login_key)
+            logging.warning(f"2FA required for {email}")
+            return jsonify({'message': '2FA code required', 'requires_2fa': True}), 401
+        if user.get('is_2fa_enabled') and user.get('totp_secret'):
             totp = pyotp.TOTP(user['totp_secret'])
             if not totp.verify(totp_code):
                 redis_client.incr(login_key)
@@ -501,22 +672,15 @@ def login():
                 return jsonify({'message': 'Invalid 2FA code'}), 401
 
         # Kiểm tra device fingerprint
-        fingerprint = get_device_fingerprint(request)
-        if not verify_device(email, fingerprint):
-            send_device_verification_email(email, fingerprint)
-            return jsonify({'message': 'Unknown device. Please verify via email.'}), 403
+        # fingerprint = get_device_fingerprint(request)
+        # if not verify_device(email, fingerprint):
+        #     send_device_verification_email(email, fingerprint)
+        #     return jsonify({'message': 'Unknown device. Please verify via email.'}), 403
 
         redis_client.delete(login_key)
         access_token = create_access_token(identity=email, additional_claims={'role': user['role']})
         refresh_token = create_refresh_token(identity=email)
         csrf_token = generate_csrf_token()
-
-        # response = make_response(jsonify({'message': 'Login successful'}), 200)
-        # response.set_cookie('access_token', access_token, httponly=True, secure=False, samesite='Strict', max_age=1800)
-        # response.set_cookie('refresh_token', refresh_token, httponly=True, secure=False, samesite='Strict', max_age=604800)
-        # response = set_csrf_cookie(response, csrf_token)
-        # logging.info(f"User {email} logged in from IP {ip}")
-        # return response
         return jsonify({
         'message': 'Login successful',
         'access_token': access_token,
@@ -956,33 +1120,52 @@ def webauthn_register_verify():
     """
     email = get_jwt_identity()
     data = request.get_json()
-    credential = json.loads(data.get('credential'))
+    credential_response = data.get('credential') # credential from frontend
+    
+    if not credential_response:
+        return jsonify({'message': 'Missing credential data'}), 400
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        challenge = redis_client.get(f"webauthn:{email}")
-        if not challenge:
-            return jsonify({'message': 'Challenge expired or invalid'}), 400
 
+        challenge_b64 = redis_client.get(f"webauthn:{email}")
+        if not challenge_b64:
+            return jsonify({'message': 'Challenge expired or invalid'}), 400
+        challenge = base64.b64decode(challenge_b64)
+
+        # Sử dụng WebAuthn library để xác minh phản hồi đăng ký
         verification = verify_registration_response(
-            credential=credential,
-            expected_challenge=base64.b64decode(challenge),
-            expected_origin="http://localhost:8000",
+            credential=credential_response, # Đây là đối tượng Python từ JSON
+            expected_challenge=challenge,
+            expected_origin="http://localhost:5501", # Cần khớp với frontend của bạn
             expected_rp_id="localhost"
         )
 
-        # Lưu public key vào database
-        c.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS webauthn_cred TEXT')
-        c.execute('UPDATE users SET webauthn_cred = %s WHERE email = %s', 
-                 (json.dumps(verification.credential_public_key), email))
+        # Lấy credential ID và public key từ đối tượng verification
+        credential_id = base64.b64encode(verification.credential_id).decode('utf-8')
+        public_key = base64.b64encode(verification.credential_public_key).decode('utf-8')
+        
+        # Cập nhật database với credential_id và public_key
+        # Lưu ý: Nếu bạn muốn hỗ trợ nhiều credential, bạn sẽ cần một bảng riêng
+        # hoặc một cách phức tạp hơn để lưu trữ chúng.
+        c.execute('''
+            UPDATE users 
+            SET webauthn_credential_id = %s, 
+                webauthn_public_key = %s 
+            WHERE email = %s
+        ''', (credential_id, public_key, email))
         conn.commit()
-        redis_client.delete(f"webauthn:{email}")
+        
+        redis_client.delete(f"webauthn:{email}") # Xóa challenge sau khi dùng
+
         logging.info(f"WebAuthn credential registered for {email}")
         return jsonify({'message': 'WebAuthn registered successfully'}), 200
+
     except Exception as e:
-        logging.error(f"Error verifying WebAuthn for {email}: {str(e)}")
-        return jsonify({'message': 'Verification failed'}), 500
+        logging.error(f"Error verifying WebAuthn registration for {email}: {str(e)}")
+        # Cung cấp thông báo lỗi chi tiết hơn nếu có thể
+        return jsonify({'message': f'Verification failed: {str(e)}'}), 500
     finally:
         conn.close()
 
@@ -1032,27 +1215,45 @@ def webauthn_login():
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT webauthn_cred FROM users WHERE email = %s AND verified = 1', (email,))
+        # Truy xuất credential ID và public key
+        c.execute('SELECT webauthn_credential_id, webauthn_public_key FROM users WHERE email = %s AND verified = 1', (email,))
         user = c.fetchone()
-        if not user or not user['webauthn_cred']:
-            return jsonify({'message': 'WebAuthn not registered for this user'}), 400
+        
+        if not user or not user['webauthn_credential_id'] or not user['webauthn_public_key']:
+            return jsonify({'message': 'WebAuthn not registered for this user or user not found/verified'}), 400
 
+        # Chuyển đổi credential ID từ base64 về bytes
+        stored_credential_id = base64.b64decode(user['webauthn_credential_id'])
+        
         # Tạo challenge cho WebAuthn login
-        authentication_options = generate_authentication_options(rp_id="localhost")
+        authentication_options = generate_authentication_options(
+            rp_id="localhost",
+            allow_credentials=[{"id": stored_credential_id, "type": "public-key"}] # Truyền credential ID đã lưu
+        )
+        
         challenge = base64.b64encode(authentication_options.challenge).decode()
-        redis_client.setex(f"webauthn:{email}", 300, challenge)
+        redis_client.setex(f"webauthn:{email}", 300, challenge) # Lưu challenge tạm thời
 
-        response = make_response(jsonify({
+        response_data = {
             'publicKey': {
                 'challenge': challenge,
                 'rpId': 'localhost',
-                'allowCredentials': []
+                'allowCredentials': [
+                    {
+                        'id': base64.b64encode(stored_credential_id).decode('utf-8'), # Encode lại cho frontend
+                        'type': 'public-key',
+                        'transports': ['internal', 'usb', 'nfc', 'ble'] # Bao gồm các transports có thể
+                    }
+                ],
+                'userVerification': 'preferred' # Hoặc 'required' tùy ý
             }
-        }), 200)
+        }
+        
+        response = make_response(jsonify(response_data), 200)
         return response
     except Exception as e:
         logging.error(f"Error starting WebAuthn login for {email}: {str(e)}")
-        return jsonify({'message': 'Login failed'}), 500
+        return jsonify({'message': f'Login failed: {str(e)}'}), 500
     finally:
         conn.close()
 
@@ -1066,44 +1267,65 @@ def webauthn_login_verify():
     """
     data = request.get_json()
     email = sanitize_input(data.get('email'))
-    credential = json.loads(data.get('credential'))
+    credential_response = data.get('credential') # response from frontend
+
+    if not credential_response:
+        return jsonify({'message': 'Missing credential data'}), 400
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT webauthn_cred, role FROM users WHERE email = %s AND verified = 1', (email,))
+        # Truy xuất credential ID và public key đã lưu
+        c.execute('SELECT webauthn_credential_id, webauthn_public_key, role FROM users WHERE email = %s AND verified = 1', (email,))
         user = c.fetchone()
-        if not user or not user['webauthn_cred']:
-            return jsonify({'message': 'WebAuthn not registered'}), 400
+        
+        if not user or not user['webauthn_credential_id'] or not user['webauthn_public_key']:
+            return jsonify({'message': 'WebAuthn not registered or user not found/verified'}), 400
 
-        challenge = redis_client.get(f"webauthn:{email}")
-        if not challenge:
+        challenge_b64 = redis_client.get(f"webauthn:{email}")
+        if not challenge_b64:
             return jsonify({'message': 'Challenge expired or invalid'}), 400
+        challenge = base64.b64decode(challenge_b64)
 
+        # Chuyển đổi public key từ base64 về bytes
+        stored_public_key_bytes = base64.b64decode(user['webauthn_public_key'])
+        
         verification = verify_authentication_response(
-            credential=credential,
-            expected_challenge=base64.b64decode(challenge),
-            expected_origin="http://localhost:8000",
+            credential=credential_response, # Đối tượng Python từ JSON
+            expected_challenge=challenge,
+            expected_origin="http://localhost:5501", # Cần khớp với frontend của bạn
             expected_rp_id="localhost",
-            credential_public_key=json.loads(user['webauthn_cred'])
+            credential_public_key=stored_public_key_bytes # Truyền public key đã lưu
         )
 
-        redis_client.delete(f"webauthn:{email}")
+        redis_client.delete(f"webauthn:{email}") # Xóa challenge sau khi dùng
+        
         access_token = create_access_token(identity=email, additional_claims={'role': user['role']})
         refresh_token = create_refresh_token(identity=email)
         csrf_token = generate_csrf_token()
 
-        response = make_response(jsonify({'message': 'Login successful'}), 200)
-        response.set_cookie('access_token', access_token, httponly=True, secure=True, samesite='Strict', max_age=1800)
-        response.set_cookie('refresh_token', refresh_token, httponly=True, secure=True, samesite='Strict', max_age=604800)
-        response = set_csrf_cookie(response, csrf_token)
+        response = make_response(jsonify({
+            'message': 'Login successful',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'csrf_token': csrf_token,
+            'role': user['role'],
+            'email': email
+        }), 200)
+        
+        # Cân nhắc việc truyền token qua JSON response thay vì cookie nếu frontend của bạn xử lý localStorage
+        # response.set_cookie('access_token', access_token, httponly=True, secure=True, samesite='Strict', max_age=1800)
+        # response.set_cookie('refresh_token', refresh_token, httponly=True, secure=True, samesite='Strict', max_age=604800)
+        # set_csrf_cookie(response, csrf_token) # Nếu bạn vẫn muốn set CSRF cookie
+        
         logging.info(f"User {email} logged in via WebAuthn")
         return response
     except Exception as e:
         logging.error(f"Error verifying WebAuthn login for {email}: {str(e)}")
-        return jsonify({'message': 'Verification failed'}), 500
+        return jsonify({'message': f'Verification failed: {str(e)}'}), 500
     finally:
         conn.close()
+
 @jwt.token_in_blocklist_loader
 def check_if_token_revoked(jwt_header, jwt_payload):
     jti = jwt_payload['jti']
