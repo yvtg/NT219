@@ -984,7 +984,17 @@ def logout():
             description: User logged out
     """
     jti = get_jwt()['jti']
+    user_id=get_jwt_identity()
     try:
+        fingerprint=get_device_fingerprint(request)
+        if fingerprint:
+            conn = get_db_connection()
+            c=conn.cursor()
+            c.execute(
+                "DELETE FROM user_devices WHERE user_id=%s AND device_fingerprint=%s",
+                    (int(user_id),fingerprint)
+            )
+            conn.commit()
         redis_client.setex(jti, 24 * 3600, 'blacklisted')
         logging.info(f"User {get_jwt_identity()} logged out, token {jti} blacklisted")
         response = make_response(jsonify({'message': 'Successfully logged out'}), 200)
@@ -995,7 +1005,9 @@ def logout():
         response = make_response(jsonify({'message': 'Logout successful (token not blacklisted)'}), 200)
         response.delete_cookie('csrf_token')
         return response
-
+    finally:
+        if conn:
+            conn.close()
 @auth_bp.route('/api/content', methods=['GET'])
 @jwt_required()
 def get_content():
