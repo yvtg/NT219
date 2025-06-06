@@ -57,8 +57,8 @@ def set_csrf_cookie(response, token):
     return response
 def get_device_fingerprint(request):
     user_agent = request.headers.get('User-Agent', '')
-    accept_language = request.headers.get('Accept-Language', '')
-    fingerprint = hashlib.sha256(f"{user_agent}:{accept_language}".encode()).hexdigest()
+    # Chỉ băm user_agent để đảm bảo tính nhất quán
+    fingerprint = hashlib.sha256(user_agent.encode()).hexdigest()
     return fingerprint
 
 def verify_device(email, fingerprint):
@@ -789,7 +789,13 @@ def get_devices():
         conn=get_db_connection()
         c=conn.cursor(cursor_factory=RealDictCursor)
         c.execute(
-            "SELECT id,user_agent,ip_address,last_active_at,created_at from user_devices where user_id=%s",(user_id,)
+            """
+            SELECT id,last_active_at, created_at, device_fingerprint,user_agent 
+            FROM user_devices 
+            WHERE user_id = %s 
+            ORDER BY last_active_at DESC
+            """,
+            (user_id,)
         )
         devices=c.fetchall()
         return jsonify(devices),200
@@ -1131,38 +1137,53 @@ def logout_device(device_id):
               type: string
               example: Failed to log out device
     """
-    user_id = get_jwt_identity()
+    user_id_from_token = get_jwt_identity()
     
+    conn = None
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 1. Lấy jti của thiết bị cần đăng xuất, đảm bảo nó thuộc về người dùng hiện tại
+        # Lấy thông tin của thiết bị cần đăng xuất
         c.execute(
-            "SELECT jti FROM user_devices WHERE id = %s AND user_id = %s",
-            (device_id, user_id)    
+            "SELECT jti, device_fingerprint FROM user_devices WHERE id = %s AND user_id = %s",
+            (device_id, int(user_id_from_token))
         )
-        device = c.fetchone()
+        device_to_logout = c.fetchone()
         
-        if not device:
+        if not device_to_logout:
             return jsonify({'message': 'Device not found or you do not have permission'}), 404
             
-        # 2. Blacklist JTI của refresh token trong Redis
-        jti_to_blacklist = device['jti']
-        # Lấy thời gian hết hạn của refresh token để set cho blacklist
-        # Mặc định là 30 ngày cho refresh token
+        # --- LOGIC SO SÁNH MỚI ---
+        # 1. Lấy fingerprint của trình duyệt đang gửi request
+        current_browser_fingerprint = get_device_fingerprint(request)
+        
+        # 2. Lấy fingerprint của thiết bị sắp bị đăng xuất từ DB
+        target_fingerprint = device_to_logout['device_fingerprint']
+        
+        # 3. So sánh chúng
+        is_current_device = (current_browser_fingerprint == target_fingerprint)
+        logging.info(f"Logging out device. Is it the current device? {is_current_device}")
+        # --- KẾT THÚC LOGIC SO SÁNH ---
+
+        # Thực hiện việc đăng xuất như cũ
+        jti_to_blacklist = device_to_logout['jti']
         expires = timedelta(days=30) 
         redis_client.setex(jti_to_blacklist, expires, 'blacklisted')
         
-        # 3. Xóa thiết bị khỏi bảng user_devices
         c.execute("DELETE FROM user_devices WHERE id = %s", (device_id,))
         conn.commit()
         
-        logging.info(f"User {user_id} logged out device {device_id} (jti: {jti_to_blacklist})")
-        return jsonify({'message': 'Device logged out successfully'}), 200
+        logging.info(f"User {user_id_from_token} logged out device {device_id}")
+
+        # Trả về kết quả kèm theo lá cờ is_current_device
+        return jsonify({
+            'message': 'Device logged out successfully',
+            'is_current_device': is_current_device # <-- Gửi cờ này về cho frontend
+        }), 200
         
     except Exception as e:
-        logging.error(f"Error logging out device {device_id} for user {user_id}: {e}")
+        logging.error(f"Error logging out device {device_id} for user {user_id_from_token}: {e}")
         return jsonify({'message': 'Failed to log out device'}), 500
     finally:
         if conn:

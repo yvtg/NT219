@@ -998,7 +998,7 @@
                                 <p>IP: ${escapeHTML(device.ip_address)} | Hoạt động lần cuối: ${formatDeviceDate(device.last_active_at)}</p>
                             </div>
                         </div>
-                        <button class="logout-device-btn" data-device-id="${device.id}">Đăng xuất</button>
+                        <button class="logout-device-btn" data-device-id="${device.id}" data-fingerprint="${escapeHTML(device.device_fingerprint)}">Đăng xuất</button>
                     </div>
                 `).join('');
 
@@ -1020,25 +1020,38 @@
             deviceModal.style.display = 'none';
         });
 
-        deviceListContainer.addEventListener('click', async (e) => {
-        if (e.target && e.target.classList.contains('logout-device-btn')) {
-            const deviceId = e.target.getAttribute('data-device-id');
-            if (confirm(`Bạn có chắc muốn đăng xuất khỏi thiết bị này không?`)) {
-                const token = localStorage.getItem('access_token');
-                try {
-                    await axios.post(`http://127.0.0.1:8000/api/auth/devices/${deviceId}/logout`, {}, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    alert('Đăng xuất thành công!');
-                    // Xóa item khỏi DOM hoặc tải lại danh sách
-                    document.getElementById(`device-item-${deviceId}`).remove();
-                } catch (error) {
-                    console.error(`Error logging out device ${deviceId}:`, error);
-                    alert(`Lỗi: ${error.response?.data?.message || 'Không thể đăng xuất.'}`);
+            deviceListContainer.addEventListener('click', async (e) => {
+                if (e.target && e.target.classList.contains('logout-device-btn')) {
+                const button = e.target;
+                const deviceId = button.getAttribute('data-device-id');
+
+                if (confirm(`Bạn có chắc muốn đăng xuất khỏi thiết bị này không?`)) {
+                    try {
+                        const token = localStorage.getItem('access_token');
+                        // Gửi request đăng xuất lên server
+                        const response = await axios.post(`http://127.0.0.1:8000/api/auth/devices/${deviceId}/logout`, {}, {
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                        // Lấy dữ liệu trả về từ backend, bao gồm cả lá cờ mới
+                        const responseData = response.data;
+                        // KIỂM TRA LÁ CỜ TỪ BACKEND
+                        if (responseData.is_current_device) {
+                            // Nếu backend nói đây là thiết bị hiện tại -> Thoát ra trang login
+                            alert('Đăng xuất khỏi thiết bị hiện tại thành công!');
+                            redirectToLogin(); 
+                        } else {
+                            // Nếu là thiết bị khác -> Chỉ cần báo thành công và xóa khỏi danh sách
+                            alert('Đăng xuất thiết bị thành công!');
+                            document.getElementById(`device-item-${deviceId}`).remove();
+                        }
+
+                    } catch (error) {
+                        console.error(`Error logging out device ${deviceId}:`, error);
+                        alert(`Lỗi: ${error.response?.data?.message || 'Không thể đăng xuất.'}`);
+                    }
                 }
             }
-        }
-    });
+        });
 
         // Xử lý nút "Đăng xuất khỏi tất cả"
         logoutAllBtn.addEventListener('click', async () => {
@@ -1514,6 +1527,23 @@
             await fetchCsrfToken(); // Fetch CSRF token on page load
             checkSession();
         });
+        async function getBrowserFingerprint() {
+            const userAgent = navigator.userAgent || '';
+            
+            // Chỉ băm user_agent, bỏ qua acceptLanguage
+            const message = userAgent;
+            
+            // Dùng Web Crypto API để băm SHA-256
+            const encoder = new TextEncoder();
+            const data = encoder.encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            
+            // Chuyển buffer thành chuỗi hex
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            return hashHex;
+        }
     </script>
 </body>
 </html>
