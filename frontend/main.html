@@ -669,6 +669,117 @@
     color: var(--netflix-red);
     margin-top: 10px;
 }
+.device-modal-content {
+    background-color: var(--netflix-dark);
+    color: #e5e5e5;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+    width: 90%;
+    max-width: 700px;
+    border: 1px solid #333;
+}
+
+.device-modal-content h2 {
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+    color: #fff;
+}
+
+.device-modal-description {
+    font-size: 14px;
+    color: var(--netflix-gray);
+    margin-bottom: 20px;
+}
+
+.btn-danger {
+    background-color: var(--netflix-red);
+    color: #fff;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+    width: 100%;
+    margin-bottom: 25px;
+}
+
+.btn-danger:hover {
+    background-color: #c40812;
+}
+
+.device-list {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px; /* For scrollbar spacing */
+}
+
+/* Custom scrollbar for device list */
+.device-list::-webkit-scrollbar {
+    width: 8px;
+}
+.device-list::-webkit-scrollbar-track {
+    background: #222;
+    border-radius: 4px;
+}
+.device-list::-webkit-scrollbar-thumb {
+    background-color: #555;
+    border-radius: 4px;
+}
+.device-list::-webkit-scrollbar-thumb:hover {
+    background-color: var(--netflix-gray);
+}
+
+.device-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 0;
+    border-bottom: 1px solid #333;
+}
+
+.device-item:last-child {
+    border-bottom: none;
+}
+
+.device-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.device-icon {
+    font-size: 2.5rem;
+}
+
+.device-details h3 {
+    font-size: 16px;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.device-details p {
+    font-size: 13px;
+    color: var(--netflix-gray);
+}
+
+.logout-device-btn {
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid var(--netflix-gray);
+    color: var(--netflix-gray);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+.logout-device-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-color: #fff;
+}
     </style>
 </head>
 <body>
@@ -700,6 +811,7 @@
                     <a href="#" id="enable-2fa">Kích hoạt 2FA</a>
                     <a href="#">Tài khoản</a>
                     <a href="#">Trung tâm trợ giúp</a>
+                    <a href="#" id="manage-devices">Quản lý thiết bị</a>
                     <a href="#" id="logout">Đăng xuất</a>
                 </div>
             </div>
@@ -805,7 +917,19 @@
             <p id="2fa-message" style="color: red;"></p>
         </div>
     </div>
-
+    <div id="device-management-modal" class="modal">
+        <div class="modal-content device-modal-content">
+            <span class="close" id="close-devices-modal">×</span>
+            <h2>Quản lý các thiết bị đã đăng nhập</h2>
+            <p class="device-modal-description">Đây là danh sách các thiết bị đã đăng nhập vào tài khoản của bạn. Bạn có thể đăng xuất khỏi các thiết bị không nhận ra.</p>
+            
+            <button id="logout-all-devices-btn" class="btn btn-danger">Đăng xuất khỏi tất cả thiết bị</button>
+            
+            <div class="device-list" id="device-list-container">
+                <p>Đang tải danh sách thiết bị...</p>
+            </div>
+        </div>
+    </div>
     <footer class="footer">
         <div class="footer-links">
             <a href="#" class="footer-link">Câu hỏi thường gặp</a>
@@ -822,7 +946,121 @@
         let userRole = 'user'; // Mặc định
         const modal2FA = document.getElementById('modal-2fa');
         const twoFAMessage = document.getElementById('2fa-message');
+        const deviceModal = document.getElementById('device-management-modal');
+        const openDeviceModalBtn = document.getElementById('manage-devices');
+        const closeDeviceModalBtn = document.getElementById('close-devices-modal');
+        const deviceListContainer = document.getElementById('device-list-container');
+        const logoutAllBtn = document.getElementById('logout-all-devices-btn');
+        function getDeviceIcon(userAgent) {
+        if (!userAgent) return '💻';
+        userAgent = userAgent.toLowerCase();
+        if (userAgent.includes('windows')) return '🖥️';
+        if (userAgent.includes('macintosh') || userAgent.includes('mac os')) return '💻';
+        if (userAgent.includes('iphone') || userAgent.includes('ipad')) return '📱';
+        if (userAgent.includes('android')) return '📱';
+        if (userAgent.includes('linux')) return '🐧';
+        return '🌐'; // Default web icon
+    }
+        // Hàm để định dạng ngày tháng cho dễ đọc
+        function formatDeviceDate(isoDate) {
+            if (!isoDate) return 'Không rõ';
+            const date = new Date(isoDate);
+            return new Intl.DateTimeFormat('vi-VN', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+            }).format(date);
+        }
+        // Hàm tải và hiển thị danh sách thiết bị
+        async function loadDevices() {
+            deviceListContainer.innerHTML = '<p>Đang tải danh sách thiết bị...</p>';
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                deviceListContainer.innerHTML = '<p>Lỗi: Bạn cần đăng nhập để xem.</p>';
+                return;
+            }
 
+            try {
+                const response = await axios.get('http://127.0.0.1:8000/api/auth/devices', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                if (response.data.length === 0) {
+                    deviceListContainer.innerHTML = '<p>Không có thiết bị nào khác đang đăng nhập.</p>';
+                    return;
+                }
+
+                deviceListContainer.innerHTML = response.data.map(device => `
+                    <div class="device-item" id="device-item-${device.id}">
+                        <div class="device-info">
+                            <div class="device-icon">${getDeviceIcon(device.user_agent)}</div>
+                            <div class="device-details">
+                                <h3>${escapeHTML(device.user_agent.substring(0, 50))}...</h3>
+                                <p>IP: ${escapeHTML(device.ip_address)} | Hoạt động lần cuối: ${formatDeviceDate(device.last_active_at)}</p>
+                            </div>
+                        </div>
+                        <button class="logout-device-btn" data-device-id="${device.id}">Đăng xuất</button>
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                console.error('Error loading devices:', error);
+                deviceListContainer.innerHTML = `<p style="color:red;">Lỗi khi tải danh sách: ${error.response?.data?.message || error.message}</p>`;
+            }
+        }
+
+        // Mở modal
+        openDeviceModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            deviceModal.style.display = 'block'; // Hiển thị modal
+            loadDevices(); // Tải danh sách khi modal mở
+        });
+
+        // Đóng modal
+        closeDeviceModalBtn.addEventListener('click', () => {
+            deviceModal.style.display = 'none';
+        });
+
+        deviceListContainer.addEventListener('click', async (e) => {
+        if (e.target && e.target.classList.contains('logout-device-btn')) {
+            const deviceId = e.target.getAttribute('data-device-id');
+            if (confirm(`Bạn có chắc muốn đăng xuất khỏi thiết bị này không?`)) {
+                const token = localStorage.getItem('access_token');
+                try {
+                    await axios.post(`http://127.0.0.1:8000/api/auth/devices/${deviceId}/logout`, {}, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    alert('Đăng xuất thành công!');
+                    // Xóa item khỏi DOM hoặc tải lại danh sách
+                    document.getElementById(`device-item-${deviceId}`).remove();
+                } catch (error) {
+                    console.error(`Error logging out device ${deviceId}:`, error);
+                    alert(`Lỗi: ${error.response?.data?.message || 'Không thể đăng xuất.'}`);
+                }
+            }
+        }
+    });
+
+        // Xử lý nút "Đăng xuất khỏi tất cả"
+        logoutAllBtn.addEventListener('click', async () => {
+            if (confirm('Bạn có chắc chắn muốn đăng xuất khỏi TẤT CẢ các thiết bị không? Hành động này sẽ đăng xuất bạn khỏi cả phiên hiện tại.')) {
+                const token = localStorage.getItem('access_token');
+                try {
+                    await axios.post('http://127.0.0.1:8000/api/auth/devices/logout-all', {}, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    alert('Đã đăng xuất khỏi tất cả thiết bị thành công. Bạn sẽ được chuyển về trang đăng nhập.');
+                    redirectToLogin(); // Hàm này bạn đã có sẵn
+                } catch (error) {
+                    console.error('Error logging out all devices:', error);
+                    alert(`Lỗi: ${error.response?.data?.message || 'Không thể thực hiện.'}`);
+                }
+            }
+        });
+        window.addEventListener('click', (e) => {
+        if (e.target == deviceModal) {
+                deviceModal.style.display = 'none';
+            }
+        });
         // Function to get CSRF token from cookies
         function getCookie(name) {
             const value = `; ${document.cookie}`;

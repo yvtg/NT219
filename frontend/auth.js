@@ -69,106 +69,108 @@ document.addEventListener('DOMContentLoaded', function() {
         togglePasswordVisibility('confirm-password', toggleConfirmPassword);
     });
 
-    // Form submissions
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        loginError.textContent = '';
+let isCaptchaRequired = false;
 
-        const email = sanitizeInput(document.getElementById('email').value);
-        const password = document.getElementById('password').value;
-        const totp_code = document.getElementById('totp_code').value;
-        const loginButton = loginForm.querySelector('.btn-login');
-        let recaptcha_response = '';
+loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginError.textContent = '';
 
-        if (recaptchaDiv.style.display === 'block') {
-            recaptcha_response = grecaptcha.getResponse();
-        }
+    const email = sanitizeInput(document.getElementById('email').value);
+    const password = document.getElementById('password').value;
+    const totp_code = document.getElementById('totp_code').value;
+    const loginButton = loginForm.querySelector('.btn-login');
 
-        if (!email || !password) {
-            loginError.textContent = 'Vui lòng điền đầy đủ thông tin!';
+    // 1. Kiểm tra các input cơ bản trước
+    if (!email || !password) {
+        loginError.textContent = 'Vui lòng điền đầy đủ thông tin!';
+        return;
+    }
+
+    // 2. Kiểm tra CSRF token
+    if (!(await checkCsrfToken())) {
+        loginError.textContent = 'Lỗi bảo mật (CSRF). Vui lòng tải lại trang.';
+        return;
+    }
+
+    // 3. Logic xử lý reCAPTCHA (CHỈ KIỂM TRA KHI CẦN THIẾT)
+    let recaptcha_response = '';
+    if (isCaptchaRequired) {
+        // Kiểm tra xem grecaptcha đã sẵn sàng chưa
+        if (typeof grecaptcha === 'undefined' || !grecaptcha.getResponse) {
+            loginError.textContent = 'Lỗi: reCAPTCHA chưa được tải xong. Vui lòng đợi một lát và thử lại.';
             return;
         }
-
-        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailPattern.test(email)) {
-            loginError.textContent = 'Email không hợp lệ!';
+        recaptcha_response = grecaptcha.getResponse();
+        // Nếu bắt buộc phải có captcha mà người dùng chưa tick -> dừng lại
+        if (!recaptcha_response) {
+            loginError.textContent = 'Vui lòng xác thực bạn không phải là người máy.';
             return;
         }
+        alert(recaptcha_response);
+    }
 
-        if (!(await checkCsrfToken())) return;
+    // 4. Bắt đầu quá trình gửi request
+    loginButton.disabled = true;
+    loginButton.textContent = 'Đang xử lý...';
 
-        loginButton.disabled = true;
-        loginButton.textContent = 'Đang xử lý...';
+    // 5. Xây dựng payload
+    const payload = {
+        email,
+        password,
+        recaptcha_response 
+    };
+    if (totp_code) {
+        payload.totp_code = totp_code;
+    }
 
-        try {
-            const csrfToken = getCookie('csrf_token');
-            console.log('CSRF Token (Login):', csrfToken);
+    try {
+        const csrfToken = getCookie('csrf_token');
+        if (!csrfToken) throw new Error('CSRF token không tồn tại.');
 
-            if (!csrfToken) {
-                throw new Error('CSRF token không tồn tại.');
-            }
+        const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            },
+            body: JSON.stringify(payload),
+            credentials: 'include'
+        });
 
-            const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken
-                },
-                body: JSON.stringify({
-                    email,
-                    password,
-                    totp_code: totp_code || undefined,
-                    recaptcha_response
-                }),
-                credentials: 'include'
-            });
+        const data = await response.json();
+        console.log('Login response:', data);
 
-            const data = await response.json();
-            console.log('Login response:', data);
-
-            if (!response.ok) {
-                if (data.requires_2fa) {
-                    totpContainer.style.display = 'block';
-                    recaptchaDiv.style.display = 'block';
-                    loginError.textContent = 'Vui lòng nhập mã 2FA';
-                    loginButton.disabled = false;
-                    loginButton.textContent = 'Đăng nhập';
-                    return;
-                }
+        if (!response.ok) {
+            if (data.message?.includes('CAPTCHA')) {
+                loginError.textContent = 'Quá nhiều lần thử. Vui lòng xác thực CAPTCHA.';
+                recaptchaDiv.style.display = 'block';
+                isCaptchaRequired = true; // Bật cờ yêu cầu CAPTCHA cho lần submit sau
+                grecaptcha.reset(); 
+            } else if (data.requires_2fa) {
+                totpContainer.style.display = 'block';
+                loginError.textContent = 'Vui lòng nhập mã 2FA';
+            } else {
                 throw new Error(data.message || 'Đăng nhập thất bại');
             }
-
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('refresh_token', data.refresh_token);
-            if (data.csrf_token) {
-                localStorage.setItem('csrf_token', data.csrf_token);
-            }
-            if (data.role) {
-                localStorage.setItem('userRole', data.role);
-            }
-
-            console.log('Login successful, redirecting to main page...');
-            window.location.href = './main.html';
-
-        } catch (error) {
-            console.error('Login error:', error);
-            loginError.textContent = escapeHTML(error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
-            
-            if (error.message.includes('CSRF token invalid')) {
-                loginError.textContent = 'CSRF token không hợp lệ. Đang làm mới...';
-                const refreshed = await refreshCsrfToken();
-                loginError.textContent += refreshed ? ' Vui lòng thử lại.' : ' Không thể làm mới token.';
-            } else if (error.response?.status === 429 || error.message.includes('CAPTCHA')) {
-                recaptchaDiv.style.display = 'block';
-            }
-        } finally {
-            loginButton.disabled = false;
-            loginButton.textContent = 'Đăng nhập';
-            if (recaptchaDiv.style.display === 'block') {
-                grecaptcha.reset();
-            }
+            return; 
         }
-    });
+
+        // Đăng nhập thành công
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+        if (data.csrf_token) localStorage.setItem('csrf_token', data.csrf_token);
+        if (data.role) localStorage.setItem('userRole', data.role);
+
+        window.location.href = './main.html';
+
+    } catch (error) {
+        console.error('Login error:', error);
+        loginError.textContent = escapeHTML(error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
+    } finally {
+        loginButton.disabled = false;
+        loginButton.textContent = 'Đăng nhập';
+    }
+});
 
     // Verify 2FA code
     if (verify2FAButton) {
