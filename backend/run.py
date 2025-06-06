@@ -7,10 +7,11 @@ from flask_restx import Api  # Import Flask-RESTX APIpp
 from App.routes import routes_bp
 from App.auth import auth_bp
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), 'config', '.env'))
+load_dotenv(dotenv_path=os.path.join(
+    os.path.dirname(__file__), 'config', '.env'))
 
 if __name__ == '__main__':
-    init_db()  
+    init_db()
     setup_logging()
 
     # Khởi tạo ứng dụng Flask
