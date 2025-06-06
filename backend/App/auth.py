@@ -272,21 +272,35 @@ def verify_recaptcha(recaptcha_response):
         logging.error(f"Lỗi không xác định trong hàm verify_recaptcha: {e}")
         return False
 def check_if_password_pwned(password):
-    sha1_password=hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
-
-    prefix,suffix = sha1_password[:5],sha1_password[5:]
-
-    url=f'https://api.pwnedpasswords.com/range/{prefix}'
+    """
+    Kiểm tra mật khẩu với API Pwned Passwords của HIBP một cách an toàn.
+    """
+    # 1. Băm mật khẩu bằng SHA-1
+    sha1_password = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+    prefix, suffix = sha1_password[:5], sha1_password[5:]
+    
+    url = f'https://api.pwnedpasswords.com/range/{prefix}'
+    
     try:
-        response=request.get(url)
-        response.raise_for_status()
-    except:
-        logging.error(f"Cound not found to HDBP API : {e}")
-    hashes = (line.split(':') for line in response.text.splitlines())
-    for h, count in hashes:
-        if h == suffix:
-            return int(count)     
-    return 0
+        # SỬA LỖI 1: Dùng thư viện 'requests' để gửi request đi
+        response = requests.get(url, timeout=5) # Thêm timeout để tránh treo
+        response.raise_for_status() # Báo lỗi nếu status code là 4xx hoặc 5xx
+
+        # SỬA LỖI 2: Toàn bộ logic xử lý response được đưa vào trong khối 'try'
+        hashes = (line.split(':') for line in response.text.splitlines())
+        for h, count in hashes:
+            if h == suffix:
+                # Nếu tìm thấy, trả về số lần bị lộ
+                return int(count) 
+        
+        # Nếu vòng lặp kết thúc mà không tìm thấy, trả về 0
+        return 0
+
+    except requests.RequestException as e:
+        # SỬA LỖI 3: Nếu có bất kỳ lỗi mạng nào, log lại và trả về 0
+        # Điều này đảm bảo tính năng không làm gián đoạn người dùng khi API HIBP gặp sự cố.
+        logging.error(f"Could not connect to HIBP API: {e}")
+        return 0
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """
@@ -883,30 +897,75 @@ def magic_login():
         description: Invalid or expired token
     """
     token = request.args.get('token')
+    conn = None
     try:
-        email = ts.loads(token, salt='magic-link', max_age=600)  # Hết hạn sau 10 phút
+        # Lấy email từ token của magic link
+        email = ts.loads(token, salt='magic-link', max_age=600) 
+        
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
         c.execute('SELECT * FROM users WHERE email = %s AND verified = 1', (email,))
         user = c.fetchone()
+        
         if not user:
             return jsonify({'message': 'Invalid or expired token'}), 400
 
-        access_token = create_access_token(identity=email, additional_claims={'role': user['role']})
-        refresh_token = create_refresh_token(identity=email)
-        csrf_token = generate_csrf_token()
+        # === LOGIC MỚI BẮT ĐẦU TỪ ĐÂY ===
 
-        # Redirect kèm token trên URL để frontend lấy và lưu vào localStorage
+        # 1. Tạo token với cấu trúc mới (identity là user_id)
+        user_identity = str(user['id'])
+        access_token = create_access_token(
+            identity=user_identity, 
+            additional_claims={'role': user['role'], 'email': user['email']}
+        )
+        refresh_token = create_refresh_token(identity=user_identity)
+
+        # 2. Ghi lại phiên đăng nhập vào user_devices (Logic Upsert)
+        refresh_jti = get_jti(encoded_token=refresh_token)
+        fingerprint = get_device_fingerprint(request)
+        ip = request.remote_addr
+        user_agent_string = request.headers.get('User-Agent', '')
+
+        c.execute(
+            "SELECT id FROM user_devices WHERE user_id = %s AND device_fingerprint = %s",
+            (user['id'], fingerprint)
+        )
+        existing_device = c.fetchone()
+
+        if existing_device:
+            # Nếu thiết bị đã biết -> UPDATE
+            c.execute(
+                """
+                UPDATE user_devices SET jti = %s, last_active_at = CURRENT_TIMESTAMP, ip_address = %s, 
+                WHERE id = %s
+                """,
+                (refresh_jti, ip, existing_device['id'])
+            )
+        else:
+            # Nếu thiết bị mới -> INSERT
+            c.execute(
+                """
+                INSERT INTO user_devices (user_id, device_fingerprint, jti, user_agent, ip_address)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (user['id'], fingerprint, refresh_jti, user_agent_string, ip)
+            )
+        
+        conn.commit()
+
+        # 3. Chuyển hướng người dùng về frontend với token mới
         redirect_url = f'http://127.0.0.1:5501/frontend/main.html?access_token={access_token}&refresh_token={refresh_token}'
         response = make_response(redirect(redirect_url))
-        # Không cần set_cookie nữa
-        logging.info(f"User {email} logged in via magic link")
+        
+        logging.info(f"User {email} logged in via magic link from device {fingerprint[:10]}...")
         return response
+
     except Exception as e:
         logging.error(f"Error processing magic link: {str(e)}")
         return jsonify({'message': 'Invalid or expired token'}), 400
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
