@@ -1,5 +1,5 @@
-flask==2.3.3
-flask-jwt-extended==4.5.0
+flask==2.3.0
+flask-jwt-extended==4.5.1
 flask-limiter==3.5.0
 argon2-cffi==23.1.0
 psycopg2-binary==2.9.9
@@ -14,3 +14,4 @@ flasgger
 flask_restx
 webauthn
 flask-cors
+python-jose
