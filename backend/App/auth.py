@@ -12,6 +12,7 @@ from .database import get_db_connection
 import smtplib
 from email.mime.text import MIMEText
 import os
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 import re
 import logging
 import uuid
@@ -25,7 +26,9 @@ import redis
 import requests
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import get_jti
-
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from google_auth_oauthlib.flow import Flow
 jwt = JWTManager()
 
 load_dotenv(dotenv_path='D:\\NT219\\NT219\\backend\\config\\.env')
@@ -1452,3 +1455,159 @@ def test_captcha():
     logging.info(f"--- KẾT THÚC TEST CAPTCHA ---")
 
     return jsonify({"verified": is_verified})
+
+# --- BẮT ĐẦU LOGIC MỚI CHO SOCIAL LOGIN ---
+
+# Hàm trợ giúp để tìm hoặc tạo người dùng từ thông tin OAuth
+def find_or_create_oauth_user(email, name, provider, oauth_id):
+    conn = get_db_connection()
+    c = conn.cursor(cursor_factory=RealDictCursor)
+    
+    # Tìm người dùng bằng provider và oauth_id trước
+    c.execute("SELECT * FROM users WHERE oauth_provider = %s AND oauth_id = %s", (provider, oauth_id))
+    user = c.fetchone()
+    if user:
+        conn.close()
+        return user
+
+    # Nếu không tìm thấy, kiểm tra xem có ai đã đăng ký bằng email này chưa
+    c.execute("SELECT * FROM users WHERE email = %s", (email,))
+    user = c.fetchone()
+    if user:
+        # Nếu có, liên kết tài khoản này với OAuth
+        c.execute(
+            "UPDATE users SET oauth_provider = %s, oauth_id = %s WHERE email = %s",
+            (provider, oauth_id, email)
+        )
+    else:
+        # Nếu chưa có, tạo người dùng mới
+        c.execute(
+            """
+            INSERT INTO users (username, email, role, verified, oauth_provider, oauth_id)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+            """,
+            (name, email, 'user', True, provider, oauth_id)
+        )
+        user = c.fetchone()
+    
+    conn.commit()
+    conn.close()
+    return user
+
+# ----- GOOGLE LOGIN -----
+
+# Thay thế toàn bộ hàm login_google bằng phiên bản này
+
+@auth_bp.route('/login/google')
+def login_google():
+    """
+    Bắt đầu quá trình đăng nhập bằng Google OAuth 2.0.
+
+    - Tạo luồng OAuth bằng thông tin cấu hình từ Google.
+    - Sinh URL ủy quyền và chuyển hướng người dùng tới trang đăng nhập của Google.
+    - Lưu trữ `state` trong Redis để xác thực CSRF sau này.
+
+    Trả về:
+        redirect: Đến URL xác thực của Google.
+    """
+    client_config = {
+        "web": {
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    }
+
+    # SỬA LỖI: Sử dụng phương thức khởi tạo đúng là from_client_config
+    flow = Flow.from_client_config(
+        client_config=client_config,
+        scopes=['openid', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']
+    )
+    
+    # Đặt redirect_uri như một thuộc tính riêng
+    flow.redirect_uri = 'http://127.0.0.1:8000/api/auth/callback/google'
+    
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true'
+    )
+    
+    redis_client.setex(f"oauth_state:{state}", 300, 1)
+    
+    return redirect(authorization_url)
+
+# Thay thế toàn bộ hàm callback_google bằng phiên bản này
+
+@auth_bp.route('/callback/google')
+def callback_google():
+    """
+    Xử lý phản hồi từ Google sau khi người dùng xác thực.
+
+    - Xác minh `state` từ Redis để đảm bảo tính hợp lệ.
+    - Hoán đổi mã xác thực (authorization code) để lấy access token và ID token.
+    - Xác minh ID token và trích xuất thông tin người dùng từ Google.
+    - Tìm hoặc tạo tài khoản người dùng trong hệ thống.
+    - Sinh JWT access và refresh token cho người dùng.
+    - Chuyển hướng người dùng về frontend với token đính kèm trong query string.
+
+    Trả về:
+        redirect: Tới frontend với access_token và refresh_token.
+    """
+    state = request.args.get('state')
+    if not redis_client.get(f"oauth_state:{state}"):
+        return jsonify({'message': 'Invalid state parameter'}), 400
+    redis_client.delete(f"oauth_state:{state}")
+    
+    client_config = {
+        "web": {
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth", # Thêm lại để đảm bảo tính đầy đủ
+        }
+    }
+    
+    # SỬA LỖI: Sử dụng phương thức khởi tạo đúng là from_client_config
+    flow = Flow.from_client_config(
+        client_config=client_config,
+        scopes=['openid', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']
+    )
+    
+    # Đặt redirect_uri như một thuộc tính riêng
+    flow.redirect_uri = 'http://127.0.0.1:8000/api/auth/callback/google'
+    
+    # Đổi authorization code lấy access token
+    try:
+        flow.fetch_token(authorization_response=request.url)
+    except Exception as e:
+        logging.error(f"Failed to fetch Google token: {e}")
+        return jsonify({'message': 'Failed to fetch token from Google'}), 400
+        
+    credentials = flow.credentials
+    
+    # Lấy thông tin người dùng
+    try:
+        user_info = id_token.verify_oauth2_token(
+            id_token=credentials.id_token,
+            request=google_requests.Request(),
+            audience=os.getenv("GOOGLE_CLIENT_ID")
+        )
+    except ValueError as e:
+        logging.error(f"Google ID token verification failed: {e}")
+        return jsonify({'message': 'Invalid Google token'}), 400
+    
+    email = user_info['email']
+    name = user_info.get('name', email.split('@')[0])
+    google_id = user_info['sub']
+
+    # Tìm hoặc tạo người dùng
+    user = find_or_create_oauth_user(email, name, 'google', google_id)
+    
+    # Tạo JWT của bạn và chuyển hướng về frontend
+    access_token = create_access_token(identity=str(user['id']), additional_claims={'role': user['role']})
+    refresh_token = create_refresh_token(identity=str(user['id']))
+    
+    # Chuyển hướng về trang chính với token
+    redirect_url = f'http://127.0.0.1:5501/frontend/main.html?access_token={access_token}&refresh_token={refresh_token}'
+    return redirect(redirect_url)

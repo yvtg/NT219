@@ -296,3 +296,46 @@ body {
 .close-modal:hover {
     color: #e50914;
 }
+
+.social-login-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: #8c8c8c;
+    margin: 20px 0;
+}
+.social-login-divider span {
+    padding: 0 10px;
+}
+.social-login-divider::before, .social-login-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #333;
+}
+.social-login-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.btn-social {
+    width: 100%;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #8c8c8c;
+    background: transparent;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: background-color 0.3s;
+}
+.btn-social:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+.btn-social img, .btn-social svg {
+    width: 20px;
+    height: 20px;
+}

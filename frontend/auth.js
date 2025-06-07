@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const closeModal = document.querySelector('.close-modal');
     const verify2FAButton = document.getElementById('verify-2fa');
     const twoFAMessage = document.getElementById('2fa-message');
-
+    const googleLoginBtn = document.getElementById('google-login-btn');
     // Password toggle elements
     const togglePassword = document.getElementById('toggle-password');
     const toggleSignupPassword = document.getElementById('toggle-signup-password');
@@ -478,6 +478,12 @@ loginForm.addEventListener('submit', async (e) => {
             signupButton.disabled = false;
             signupButton.textContent = 'Đăng ký';
         }
+    }
+    if (googleLoginBtn) {
+    googleLoginBtn.addEventListener('click', () => {
+        // Chuyển hướng đến route đăng nhập Google của backend
+        window.location.href = 'http://127.0.0.1:8000/api/auth/login/google';
+    });
     }
 
     async function handleMagicLink(e) {

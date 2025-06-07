@@ -15,3 +15,6 @@ flask_restx
 webauthn
 flask-cors
 python-jose
+google-auth 
+google-auth-oauthlib
+requests
