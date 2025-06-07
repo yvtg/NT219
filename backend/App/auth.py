@@ -447,12 +447,12 @@ def enable_2fa():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT verified, is_2fa_enabled FROM users WHERE email = %s', (email,))
+        c.execute('SELECT verified, is_2fa_enabled FROM users WHERE id = %s', (id,))
         user = c.fetchone()
         if not user or not user['verified']:
             return jsonify({'message': 'User not found or not verified'}), 400
@@ -462,10 +462,10 @@ def enable_2fa():
         totp_secret = pyotp.random_base32()
         c.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT')
         c.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE')
-        c.execute('UPDATE users SET totp_secret = %s, is_2fa_enabled = TRUE WHERE email = %s', (totp_secret, email))
+        c.execute('UPDATE users SET totp_secret = %s, is_2fa_enabled = TRUE WHERE id = %s', (totp_secret, id))
         conn.commit()
 
-        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=email, issuer_name='Netflix')
+        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=id, issuer_name='Netflix')
         qr = qrcode.QRCode()
         qr.add_data(totp_uri)
         qr.make(fit=True)
@@ -474,7 +474,7 @@ def enable_2fa():
         img.save(buffered, format="PNG")
         qr_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        logging.info(f"2FA enabled for {email}")
+        logging.info(f"2FA enabled for {id}")
         response = make_response(jsonify({
             'message': '2FA enabled, scan the QR code with your authenticator app',
             'qr_code': f'data:image/png;base64,{qr_base64}',
@@ -482,7 +482,7 @@ def enable_2fa():
         }), 200)
         return response
     except Exception as e:
-        logging.error(f"Error enabling 2FA for {email}: {str(e)}")
+        logging.error(f"Error enabling 2FA for {id}: {str(e)}")
         return jsonify({'message': 'Failed to enable 2FA'}), 500
     finally:
         conn.close()
@@ -520,7 +520,7 @@ def verify_2fa():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
     data = request.get_json()
     if not data or 'totp_code' not in data:
         return jsonify({'message': 'Invalid or missing TOTP code'}), 400
@@ -532,7 +532,7 @@ def verify_2fa():
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT verified, totp_secret, is_2fa_enabled FROM users WHERE email = %s', (email,))
+        c.execute('SELECT verified, totp_secret, is_2fa_enabled FROM users WHERE id = %s', (id,))
         user = c.fetchone()
         if not user:
             return jsonify({'message': 'User not found'}), 404
@@ -549,7 +549,7 @@ def verify_2fa():
         conn.close()
         return jsonify({'message': '2FA verified successfully', 'is_2fa_enabled': True}), 200
     except Exception as e:
-        logging.error(f"Error verifying 2FA for {email}: {str(e)}")
+        logging.error(f"Error verifying 2FA for {id}: {str(e)}")
         return jsonify({'message': 'Failed to verify 2FA'}), 500
     finally:
         conn.close()
@@ -573,19 +573,19 @@ def check_2fa_status():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (email,))
+        c.execute('SELECT is_2fa_enabled FROM users WHERE id = %s', (id,))
         user = c.fetchone()
         if not user:
             return jsonify({'message': 'User not found'}), 404
 
         return jsonify({'is_2fa_enabled': user['is_2fa_enabled'] or False}), 200
     except Exception as e:
-        logging.error(f"Error checking 2FA status for {email}: {str(e)}")
+        logging.error(f"Error checking 2FA status for {id}: {str(e)}")
         return jsonify({'message': 'Failed to check 2FA status'}), 500
     finally:
         conn.close()
@@ -649,24 +649,24 @@ def disable_2fa():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (email,))
+        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (id,))
         user = c.fetchone()
         if not user:
             return jsonify({'message': 'User not found'}), 404
         if not user['is_2fa_enabled']:
             return jsonify({'message': '2FA not enabled'}), 400
 
-        c.execute('UPDATE users SET is_2fa_enabled = FALSE, totp_secret = NULL WHERE email = %s', (email,))
+        c.execute('UPDATE users SET is_2fa_enabled = FALSE, totp_secret = NULL WHERE id = %s', (id,))
         conn.commit()
         conn.close()
         return jsonify({'message': '2FA disabled successfully'}), 200
     except Exception as e:
-        logging.error(f"Error disabling 2FA for {email}: {str(e)}")
+        logging.error(f"Error disabling 2FA for {id}: {str(e)}")
         return jsonify({'message': 'Failed to disable 2FA'}), 500
     finally:
         conn.close()
@@ -737,18 +737,12 @@ def login():
                 redis_client.incr(login_key)
                 logging.warning(f"Invalid 2FA code for {email}")
                 return jsonify({'message': 'Invalid 2FA code'}), 401
-
-        print("\n--- BẮT ĐẦU DEBUG GIÁ TRỊ IDENTITY ---")
         user_identity_value = user.get('id')
-        print(f"Giá trị của user['id']: {user_identity_value}")
-        print(f"Kiểu dữ liệu của user['id']: {type(user_identity_value)}")
-        print("--------------------------------------\n")
         redis_client.delete(login_key)
+
+
         identity={'email':email,'user_id':user['id']}
-        user_identity = str(user['id'])
-        access_token = create_access_token(identity=user_identity, additional_claims={'role': user['role'],'email':user['email']})
-        refresh_token = create_refresh_token(identity=user_identity)
-        refresh_jti=get_jti(encoded_token=refresh_token)
+        csrf_token = generate_csrf_token()
         fingerprint=get_device_fingerprint(request)
         user_agent=request.headers.get('User-Agent','')
         ip=request.remote_addr
@@ -759,24 +753,49 @@ def login():
 
         existing_device=c.fetchone()
         if existing_device:
+            logging.info(f"Known device login for user {email} from fingerprint {fingerprint[:10]}...")
+            user_identity = str(user['id'])
+            access_token = create_access_token(identity=user_identity, additional_claims={'role': user['role'],'email':user['email']})
+            refresh_token = create_refresh_token(identity=user_identity)
+            refresh_jti=get_jti(encoded_token=refresh_token)
             c.execute("""
             UPDATE user_devices SET last_active_at=CURRENT_TIMESTAMP,jti=%s WHERE user_id=%s 
                       """,(refresh_jti,existing_device['id']))
+            conn.commit()
+            return jsonify({
+                'message': 'Login successful',
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'csrf_token': csrf_token,
+                'role': user['role'],
+                'email': email
+            }), 200
         else:
-            c.execute("""
-                INSERT INTO user_devices (user_id, device_fingerprint, user_agent, ip_address,jti) VALUES(%s,%s,%s,%s,%s)
-            """,
-            (user['id'], fingerprint, user_agent, ip,refresh_jti))
-        conn.commit()
-        csrf_token = generate_csrf_token()
-        return jsonify({
-        'message': 'Login successful',
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'csrf_token': csrf_token,
-        'role': user['role'],
-        'email': email
-        }), 200
+            logging.warning(f"New device detected for user {email}. Verification required.")
+            ts = URLSafeTimedSerializer(os.getenv("SECRET_KEY"))
+            verification_token = ts.dumps({"user_id": user['id'], "fingerprint": fingerprint}, salt='device-verify-salt')
+            try:
+                verification_link = f"http://localhost:8000/api/auth/verify-device?token={verification_token}"
+                # (Code gửi email tương tự như hàm send_verification_email của bạn)
+                msg = MIMEText(f"We detected a login from a new device. If this was you, please verify the device by clicking this link: {verification_link}\nThis link is valid for 10 minutes.")
+                msg['Subject'] = "New Device Login Verification"
+                msg['From'] = os.getenv('EMAIL_FROM')
+                msg['To'] = email
+                
+                with smtplib.SMTP(os.getenv('SMTP_SERVER'), int(os.getenv('SMTP_PORT'))) as server:
+                    server.starttls()
+                    server.login(os.getenv('SMTP_USERNAME'), os.getenv('SMTP_PASSWORD'))
+                    server.sendmail(os.getenv('EMAIL_FROM'), email, msg.as_string())
+            except Exception as e:
+                logging.error(f"Failed to send device verification email to {email}: {str(e)}")
+                # Dù gửi mail lỗi, vẫn phải báo lỗi cho người dùng một cách an toàn
+                return jsonify({'message': 'An internal error occurred. Please try again later.'}), 500
+
+            # Trả về thông báo yêu cầu xác thực
+            return jsonify({
+                'message': 'New device detected. Please check your email to verify this device.',
+                'requires_device_verification': True
+            }), 401 # Dùng 401 Unauthorized vì chưa cấp quyền
     except Exception as e:
         logging.error(f"Error logging in user {email}: {str(e)}")
         return jsonify({'message': 'Login failed'}), 500
@@ -784,6 +803,57 @@ def login():
         conn.close()
 
 ts = URLSafeTimedSerializer(os.getenv("SECRET_KEY"))
+@auth_bp.route('verify-device',methods=['GET'])
+def verify_device_token():
+    """
+    Verify a new device using a token sent via email.
+
+    This endpoint is used to verify a new device attempting to access a user's account.
+    It expects a token passed as a query parameter. The token is generated using a 
+    `URLSafeTimedSerializer` with a limited lifetime (10 minutes). If the token is valid 
+    and has not expired, the device will be marked as verified in the database.
+
+    Query Parameters:
+        token (str): A time-limited signed token containing the user ID and device fingerprint.
+
+    Returns:
+        JSON response with a success or error message:
+            200 OK - if the device is verified successfully.
+            400 Bad Request - if the token is missing, invalid, or expired.
+    """
+    token = request.args.get('token')
+    if not token:
+        return jsonify({'message': 'Missing token'}), 400
+
+    ts = URLSafeTimedSerializer(os.getenv("SECRET_KEY"))
+    conn = None
+    try:
+        # Giải mã token, max_age là thời gian hết hạn (tính bằng giây)
+        data = ts.loads(token, salt='device-verify-salt', max_age=600) # 10 phút
+        user_id = data['user_id']
+        fingerprint = data['fingerprint']
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        c.execute("""
+            INSERT INTO user_devices (user_id, device_fingerprint, is_verified, user_agent, ip_address)
+            VALUES (%s, %s, TRUE, %s, %s)
+            ON CONFLICT (user_id, device_fingerprint) DO UPDATE SET is_verified = TRUE
+        """, (user_id, fingerprint, request.headers.get('User-Agent', ''), request.remote_addr))
+        
+        conn.commit()
+        logging.info(f"Device with fingerprint {fingerprint[:10]}... verified for user_id {user_id}")
+
+        # return jsonify({'message': 'Device verified successfully. You can now log in from this device.'}), 200
+        return redirect('http://127.0.0.1:5501/frontend/device-verified.html')
+
+    except Exception as e:
+        logging.error(f"Invalid or expired device verification token: {str(e)}")
+        return jsonify({'message': 'The verification link is invalid or has expired.'}), 400
+    finally:
+        if conn:
+            conn.close()
 @auth_bp.route("/devices",methods=['GET'])
 @jwt_required()
 def get_devices():
@@ -1081,7 +1151,7 @@ def get_content():
         200:
             description: Content for user
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
     claims = get_jwt()
     role = claims.get('role', 'user')
 
@@ -1104,7 +1174,7 @@ def get_content():
         response = make_response(jsonify({'role': role, 'content': content}), 200)
         return response
     except Exception as e:
-        logging.error(f"Error fetching content for {email}: {str(e)}")
+        logging.error(f"Error fetching content for {id}: {str(e)}")
         return jsonify({'message': 'Error fetching content'}), 500
     finally:
         c.close()

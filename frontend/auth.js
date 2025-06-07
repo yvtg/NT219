@@ -141,18 +141,29 @@ loginForm.addEventListener('submit', async (e) => {
         console.log('Login response:', data);
 
         if (!response.ok) {
-            if (data.message?.includes('CAPTCHA')) {
+            if (data.requires_device_verification === true) {
+            // TRƯỜNG HỢP MỚI: THIẾT BỊ CẦN XÁC THỰC
+                loginError.textContent = data.message || 'Phát hiện thiết bị mới. Vui lòng kiểm tra email của bạn để xác thực.';
+
+            } else if (data.message?.includes('CAPTCHA')) {
+            // Logic cũ của bạn: Xử lý CAPTCHA
                 loginError.textContent = 'Quá nhiều lần thử. Vui lòng xác thực CAPTCHA.';
                 recaptchaDiv.style.display = 'block';
-                isCaptchaRequired = true; // Bật cờ yêu cầu CAPTCHA cho lần submit sau
-                grecaptcha.reset(); 
+                isCaptchaRequired = true;
+                grecaptcha.reset();
+
             } else if (data.requires_2fa) {
+                // Logic cũ của bạn: Xử lý 2FA
                 totpContainer.style.display = 'block';
                 loginError.textContent = 'Vui lòng nhập mã 2FA';
+
             } else {
+                // Logic cũ của bạn: Các lỗi khác
                 throw new Error(data.message || 'Đăng nhập thất bại');
             }
-            return; 
+
+            // --- KẾT THÚC LOGIC CẦN CẬP NHẬT ---
+            return;
         }
 
         // Đăng nhập thành công
