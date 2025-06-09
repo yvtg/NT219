@@ -18,6 +18,17 @@
 
         <section class="showcase">
             <div class="showcase-content">
+                <!-- Thêm section video mới -->
+                <div class="video-showcase">
+                    <div class="loading-state" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Đang tải video...</p>
+                    </div>
+                    <div class="error-state" style="display: none;">
+                        <p>Không thể tải video. Vui lòng thử lại sau.</p>
+                    </div>
+                </div>
+
                 <div class="form-container">
                     <div class="tabs">
                         <div class="tab active" id="login-tab">Đăng nhập</div>
@@ -128,5 +139,3 @@
         </section>
 
         <script src="./auth.js"></script>
-    </body>
-    </html>

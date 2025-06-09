@@ -818,7 +818,8 @@
         </div>
     </footer>
 
-    <script>
+    <script type="module">
+
         let userRole = 'user'; // Mặc định
         const modal2FA = document.getElementById('modal-2fa');
         const twoFAMessage = document.getElementById('2fa-message');
@@ -877,62 +878,21 @@
                         'Content-Type': 'application/json'
                     }
                 });
-
+                console.log('Session check response:', response.data);
+                
                 userRole = response.data.role || 'user';
+                console.log('User role:', userRole);
                 
-                const enable2faElement = document.getElementById('enable-2fa');
-                if (enable2faElement) {
-                    enable2faElement.style.display = response.data.totp_secret ? 'none' : 'block';
-                }
+                // Load content based on role
+                await loadContentByRole(token);
                 
-                if (typeof updateInterfaceByRole === 'function') {
-                    updateInterfaceByRole();
-                }
-                
-                if (typeof loadContentByRole === 'function') {
-                    loadContentByRole(token);
-                }
-
+                // Update UI based on role
+                updateUIForRole();
             } catch (error) {
-                alert('Session check error: ' + (error.response?.data?.message || error.message));
-                console.error('Session check error:', error.response || error);
-
+                console.error('Session check error:', error);
                 if (error.response?.status === 401) {
-                    console.log('Access token expired, attempting refresh...');
-                    
-                    const refreshToken = localStorage.getItem('refresh_token');
-                    if (!refreshToken) {
-                        console.log('No refresh token available');
-                        redirectToLogin();
-                        return;
-                    }
-
-                    try {
-                        const refreshResponse = await axios.post('http://127.0.0.1:8000/api/auth/refresh', {}, {
-                            headers: { 
-                                Authorization: `Bearer ${refreshToken}`,
-                                'Content-Type': 'application/json'
-                            }
-                        });
-
-                        alert('Token refresh successful');
-                        
-                        localStorage.setItem('access_token', refreshResponse.data.access_token);
-                        if (refreshResponse.data.refresh_token) {
-                            localStorage.setItem('refresh_token', refreshResponse.data.refresh_token);
-                        }
-
-                        window.location.reload();
-
-                    } catch (refreshError) {
-                        alert('Token refresh failed: ' + (refreshError.response?.data?.message || refreshError.message));
-                        console.error('Token refresh failed:', refreshError);
-                        redirectToLogin();
-                    }
-                } else {
-                    if (error.response) {
-                        redirectToLogin();
-                    }
+                    console.log('Token expired, redirecting to login...');
+                    redirectToLogin();
                 }
             }
         }
@@ -946,7 +906,8 @@
             window.location.href = './index.html';
         }
 
-        function updateInterfaceByRole() {
+        function updateUIForRole() {
+            console.log('Updating UI for role:', userRole);
             const adminPanel = document.getElementById('admin-panel');
             const productionPanel = document.getElementById('production-panel');
             const popularSection = document.getElementById('popular-section');
@@ -955,18 +916,21 @@
 
             if (adminPanel && productionPanel && popularSection && trendingSection && rewatchSection) {
                 if (userRole === 'admin') {
+                    console.log('Showing admin panel');
                     adminPanel.style.display = 'block';
                     popularSection.style.display = 'none';
                     trendingSection.style.display = 'none';
                     rewatchSection.style.display = 'none';
                     productionPanel.style.display = 'none';
                 } else if (userRole === 'production') {
-                    productionPanel.style.display = 'block'; // Ensure production panel is shown for production role
+                    console.log('Showing production panel');
+                    productionPanel.style.display = 'block';
                     popularSection.style.display = 'block';
                     trendingSection.style.display = 'block';
                     rewatchSection.style.display = 'block';
-                    adminPanel.style.display = 'none'; // Hide admin panel for production role
+                    adminPanel.style.display = 'none';
                 } else {
+                    console.log('Showing user content');
                     popularSection.style.display = 'block';
                     trendingSection.style.display = 'block';
                     rewatchSection.style.display = 'block';
@@ -974,21 +938,35 @@
                     productionPanel.style.display = 'none';
                 }
             } else {
-                console.warn('One or more section elements not found. Check your HTML IDs.');
+                console.warn('One or more section elements not found:', {
+                    adminPanel: !!adminPanel,
+                    productionPanel: !!productionPanel,
+                    popularSection: !!popularSection,
+                    trendingSection: !!trendingSection,
+                    rewatchSection: !!rewatchSection
+                });
             }
         }
 
         async function loadContentByRole(token) {
             try {
-                // Ensure to adapt this endpoint based on your backend structure
-                const contentResponse = await axios.get('http://localhost:8000/api/auth/api/content', {
+                console.log('Loading content for role:', userRole);
+                console.log('Using token:', token);
+                
+                // Lấy danh sách video từ API
+                const response = await axios.get('http://localhost:8000/api/auth/api/content', {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                const content = contentResponse.data.content;
+                console.log('Content API response:', response.data);
+                
+                const { role, content } = response.data;
+                console.log('Received content:', content);
 
-                if (userRole === 'admin') {
+                if (role === 'admin') {
+                    // Hiển thị danh sách user cho admin
                     const userList = document.getElementById('user-list');
                     if (userList) {
+                        console.log('Rendering admin user list');
                         userList.innerHTML = content.map(user => `
                             <tr>
                                 <td>${escapeHTML(user.email)}</td>
@@ -998,24 +976,88 @@
                             </tr>
                         `).join('');
                     }
-                } else if (userRole === 'production') {
-                    const videoList = document.getElementById('video-list');
-                    if (videoList) {
-                        videoList.innerHTML = content.map(video => `
-                            <tr>
-                                <td>${escapeHTML(video.title)}</td>
-                                <td>${escapeHTML(video.category)}</td>
-                                <td><button onclick="editVideo(${video.id})">Sửa</button></td>
-                            </tr>
+                } else {
+                    // Hiển thị video cho user thường
+                    console.log('Rendering video content for user');
+                    
+                    // Hiển thị video trong các section tương ứng
+                    const popularVideos = document.getElementById('popular-videos');
+                    const trendingVideos = document.getElementById('trending-videos');
+                    const rewatchVideos = document.getElementById('rewatch-videos');
+
+                    // Render video vào từng section
+                    if (popularVideos) {
+                        console.log('Rendering popular videos');
+                        popularVideos.innerHTML = content.map(video => `
+                            <div class="thumbnail" data-video-id="${video.id}" data-video-filename="${escapeHTML(video.video_url)}">
+                                <img src="${escapeHTML(video.thumbnail_url)}" alt="${escapeHTML(video.title)}" 
+                                     onerror="this.src='https://via.placeholder.com/300x169?text=Video+Thumbnail'">
+                                <div class="thumbnail-overlay">
+                                    <div class="thumbnail-title">${escapeHTML(video.title)}</div>
+                                    <div class="thumbnail-actions">
+                                        <div class="thumbnail-icon play-icon">▶</div>
+                                        <div class="thumbnail-icon add-icon">+</div>
+                                        <div class="thumbnail-icon like-icon">👍</div>
+                                    </div>
+                                </div>
+                            </div>
                         `).join('');
                     }
-                } else {
-                    loadVideos('popular', 'popular-videos', token);
-                    loadVideos('trending', 'trending-videos', token);
-                    loadVideos('rewatch', 'rewatch-videos', token);
+
+                    if (trendingVideos) {
+                        console.log('Rendering trending videos');
+                        trendingVideos.innerHTML = content.map(video => `
+                            <div class="thumbnail" data-video-id="${video.id}" data-video-filename="${escapeHTML(video.video_url)}">
+                                <img src="${escapeHTML(video.thumbnail_url)}" alt="${escapeHTML(video.title)}"
+                                     onerror="this.src='https://via.placeholder.com/300x169?text=Video+Thumbnail'">
+                                <div class="thumbnail-overlay">
+                                    <div class="thumbnail-title">${escapeHTML(video.title)}</div>
+                                    <div class="thumbnail-actions">
+                                        <div class="thumbnail-icon play-icon">▶</div>
+                                        <div class="thumbnail-icon add-icon">+</div>
+                                        <div class="thumbnail-icon like-icon">👍</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+
+                    if (rewatchVideos) {
+                        console.log('Rendering rewatch videos');
+                        rewatchVideos.innerHTML = content.map(video => `
+                            <div class="thumbnail" data-video-id="${video.id}" data-video-filename="${escapeHTML(video.video_url)}">
+                                <img src="${escapeHTML(video.thumbnail_url)}" alt="${escapeHTML(video.title)}"
+                                     onerror="this.src='https://via.placeholder.com/300x169?text=Video+Thumbnail'">
+                                <div class="thumbnail-overlay">
+                                    <div class="thumbnail-title">${escapeHTML(video.title)}</div>
+                                    <div class="thumbnail-actions">
+                                        <div class="thumbnail-icon play-icon">▶</div>
+                                        <div class="thumbnail-icon add-icon">+</div>
+                                        <div class="thumbnail-icon like-icon">👍</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+
+                    // Cập nhật hero banner với video đầu tiên
+                    const firstVideo = content[0];
+                    if (firstVideo) {
+                        const heroTitle = document.getElementById('hero-title');
+                        const heroDescription = document.getElementById('hero-description');
+                        const playFeatured = document.getElementById('play-featured');
+                        
+                        if (heroTitle) heroTitle.textContent = firstVideo.title;
+                        if (heroDescription) heroDescription.textContent = firstVideo.description || '';
+                        if (playFeatured) {
+                            playFeatured.setAttribute('data-video-id', firstVideo.id);
+                            playFeatured.setAttribute('data-video-filename', firstVideo.video_url);
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Error loading content:', error);
+                console.error('Error details:', error.response?.data);
                 alert('Lỗi khi tải nội dung: ' + (error.response?.data?.message || error.message));
             }
         }
@@ -1155,104 +1197,29 @@
             }
         });
 
-        const loadVideos = async (category, elementId, token) => {
-            try {
-                const response = await axios.get(`http://localhost:8000/api/videos?category=${category}&limit=6`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                const videos = response.data.videos;
-                const container = document.getElementById(elementId);
-                if (container) {
-                    container.innerHTML = videos.map(video => `
-                        <div class="thumbnail" data-video-id="${escapeHTML(video.id)}" data-video-url="${escapeHTML(video.video_url || 'https://player.vimeo.com/external/194837908.sd.mp4')}">
-                            <img src="${escapeHTML(video.thumbnail_url || '/static/placeholder.jpg')}" alt="${escapeHTML(video.title)}">
-                            <div class="thumbnail-overlay">
-                                <div class="thumbnail-title">${escapeHTML(video.title)}</div>
-                                <div class="thumbnail-actions">
-                                    <div class="thumbnail-icon">▶</div>
-                                    <div class="thumbnail-icon">+</div>
-                                    <div class="thumbnail-icon">👍</div>
-                                </div>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            } catch (error) {
-                console.error(`Error loading ${category} videos:`, error);
-            }
-        };
+    const openVideo = (videoId) => {
+        window.open(`video.html?id=${videoId}`, '_blank');
+    };
 
+        // Sửa event listener cho nút Play trong hero banner
         const playFeatured = document.getElementById('play-featured');
         if (playFeatured) {
             playFeatured.addEventListener('click', () => {
-                const token = localStorage.getItem('access_token'); // Get token here
-                if (!token) {
-                    alert('Bạn cần đăng nhập để xem video.');
-                    return;
-                }
-                axios.get('http://localhost:8000/api/videos?category=popular&limit=1', {
-                    headers: { Authorization: `Bearer ${token}` }
-                }).then(response => {
-                    const video = response.data.videos[0];
-                    openVideoModal(video.id, video.video_url, video.title);
-                }).catch(error => {
-                    console.error('Error playing featured video:', error);
-                    alert('Không thể tải video nổi bật.');
-                });
+                const videoId = playFeatured.getAttribute('data-video-id');
+                const title = document.getElementById('hero-title').textContent;
+                const description = document.getElementById('hero-description').textContent;
+                openVideo(videoId, title, description);
             });
         }
 
+        // Sửa event listener cho thumbnail click
         document.addEventListener('click', (e) => {
             const thumbnail = e.target.closest('.thumbnail');
             if (thumbnail) {
                 const videoId = thumbnail.getAttribute('data-video-id');
-                const videoUrl = thumbnail.getAttribute('data-video-url');
                 const title = thumbnail.querySelector('.thumbnail-title').textContent;
-                openVideoModal(videoId, videoUrl, title);
+                openVideo(videoId, title);
             }
-        });
-
-        const openVideoModal = (videoId, videoUrl, title) => {
-            const modal = document.getElementById('videoModal');
-            const videoPlayer = document.getElementById('videoPlayer');
-            const videoSource = document.getElementById('videoSource');
-            const videoTitle = document.getElementById('video-title');
-            videoSource.src = videoUrl || 'https://player.vimeo.com/external/194837908.sd.mp4';
-            videoTitle.textContent = title || 'Tiêu đề phim';
-            videoPlayer.load();
-            modal.style.display = 'block';
-
-            videoPlayer.addEventListener('timeupdate', () => {
-                const percent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
-                document.querySelector('.progress-bar').style.width = `${percent}%`;
-            });
-
-            const progressContainer = document.querySelector('.progress-container');
-            const progressBar = document.querySelector('.progress-bar');
-            if (progressContainer) {
-                progressContainer.addEventListener('click', (e) => {
-                    const rect = progressContainer.getBoundingClientRect();
-                    const clickX = e.clientX - rect.left;
-                    const width = rect.width;
-                    const newTime = (clickX / width) * videoPlayer.duration;
-                    videoPlayer.currentTime = newTime;
-                });
-            }
-        };
-
-        document.querySelector('.close').addEventListener('click', () => {
-            const modal = document.getElementById('videoModal');
-            const videoPlayer = document.getElementById('videoPlayer');
-            videoPlayer.pause();
-            modal.style.display = 'none';
-        });
-
-        function editVideo(videoId) {
-            alert(`Chỉnh sửa video ID: ${videoId} (Chưa triển khai)`);
-        }
-
-        document.getElementById('add-video').addEventListener('click', () => {
-            alert('Thêm video mới (Chưa triển khai)');
         });
 
         // Function to escape HTML to prevent XSS
@@ -1276,6 +1243,23 @@
             await fetchCsrfToken(); // Fetch CSRF token on page load
             checkSession();
         });
+
+        // Thêm hàm xóa video cho production
+        window.deleteVideo = async (videoId) => {
+            if (!confirm('Bạn có chắc muốn xóa video này?')) return;
+            
+            try {
+                const token = localStorage.getItem('access_token');
+                await axios.delete(`http://localhost:8000/api/videos/${videoId}`, {
+                    headers: { Authorization: `Bearer ${token}`, Range: `bytes=0-` }
+                });
+                alert('Xóa video thành công');
+                checkSession(); // Reload danh sách
+            } catch (error) {
+                console.error('Lỗi khi xóa video:', error);
+                alert('Lỗi khi xóa video: ' + (error.response?.data?.message || error.message));
+            }
+        };
     </script>
 </body>
 </html>

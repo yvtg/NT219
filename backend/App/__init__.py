@@ -9,11 +9,14 @@ import os
 from psycopg2.extras import RealDictCursor
 from App.database import get_db_connection
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
+load_dotenv(dotenv_path=os.path.join(
+    os.path.dirname(__file__), '..', 'config', '.env'))
+
 
 def create_app():
     app = Flask(__name__)
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-very-strong-secret-key')
+    app.config['JWT_SECRET_KEY'] = os.getenv(
+        'JWT_SECRET_KEY', 'your-very-strong-secret-key')
 
     # Khởi tạo JWT
     jwt = JWTManager(app)
@@ -25,9 +28,12 @@ def create_app():
 
     # Kích hoạt CORS
     CORS(app,
-     origins=["http://127.0.0.1:5501"],
-     supports_credentials=True,
-     allow_headers=["Authorization", "Content-Type","x-csrf-token"])
+         origins=["http://127.0.0.1:5501", "http://localhost:5501"],
+         supports_credentials=True,
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+         allow_headers=["Authorization", "Content-Type",
+                        "x-csrf-token", "Range", "Content-Range", "Accept-Ranges"],
+         expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"])
     # Khởi tạo Flasgger (Swagger UI)
     app.config['SWAGGER'] = {
         'title': 'API Documentation',
@@ -41,9 +47,13 @@ def create_app():
     from .auth import auth_bp
     from .routes import routes_bp
     from .video import videos_bp
+    from .stream import stream_bp
+
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(routes_bp, url_prefix='/api')
     app.register_blueprint(videos_bp, url_prefix='/api')
+    app.register_blueprint(stream_bp, url_prefix='/api')
+
     app.config['JWT_TOKEN_LOCATION'] = ['headers']
     app.config['JWT_COOKIE_SECURE'] = False  # True nếu dùng HTTPS
     app.config['JWT_COOKIE_CSRF_PROTECT'] = False

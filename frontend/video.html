@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix - Xem video</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script type="module">
+        // Import ChaoticCipher và gán vào window để có thể sử dụng ở script khác
+        import ChaoticCipher from './chaotic_cipher.js';
+        window.ChaoticCipher = ChaoticCipher;
+    </script>
+    <style>
+        :root {
+            --netflix-red: #e50914;
+            --netflix-dark: #141414;
+            --netflix-light-gray: #333;
+            --netflix-gray: #8c8c8c;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background-color: var(--netflix-dark);
+            color: #fff;
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            padding: 20px 4%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,.7) 10%, rgba(0,0,0,0));
+        }
+
+        .logo {
+            height: 25px;
+        }
+
+        .back-button {
+            color: #fff;
+            text-decoration: none;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-button:hover {
+            color: var(--netflix-red);
+        }
+
+        .video-container {
+            margin-top: 80px;
+            padding: 20px 4%;
+            flex: 1;
+        }
+
+        .videos-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .video-box {
+            flex: 1;
+            min-width: 300px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .video-box-title {
+            padding: 10px;
+            background: var(--netflix-light-gray);
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .video-player {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #000;
+        }
+
+        .video-info {
+            padding: 20px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), var(--netflix-dark));
+        }
+
+        .video-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .video-actions {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .action-button {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .play-button {
+            background-color: #fff;
+            color: #000;
+        }
+
+        .play-button:hover {
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+
+        .like-button, .add-button {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+
+        .like-button:hover, .add-button:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .video-description {
+            color: var(--netflix-gray);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .video-container {
+                padding: 10px 2%;
+            }
+
+            .video-title {
+                font-size: 20px;
+            }
+
+            .video-actions {
+                flex-wrap: wrap;
+            }
+
+            .action-button {
+                font-size: 14px;
+                padding: 6px 12px;
+            }
+
+            .videos-container {
+                flex-direction: column;
+            }
+            .video-box {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <a href="main.html" class="back-button">
+            <span>←</span> Quay lại
+        </a>
+        <svg class="logo" viewBox="0 0 111 30" fill="#e50914">
+            <path d="M105.06233,14.2806261..."></path>
+        </svg>
+    </header>
+
+    <div class="video-container">
+        <div class="videos-container">
+            <!-- Video đã mã hóa và giải mã -->
+            <div class="video-box">
+                <div class="video-box-title"></div>
+                <video id="encryptedVideoPlayer" class="video-player" controls>
+                    <source id="encryptedVideoSource" type="video/mp4">
+                    Trình duyệt của bạn không hỗ trợ thẻ video.
+                </video>
+            </div>
+        </div>
+
+        <div class="video-info">
+            <h1 class="video-title" id="video-title">Tiêu đề video</h1>
+            <div class="video-actions">
+                <button class="action-button play-button" id="playButton">
+                    <span>▶</span> Phát
+                </button>
+                <button class="action-button like-button">
+                    <span>👍</span> Thích
+                </button>
+                <button class="action-button add-button">
+                    <span>+</span> Thêm vào danh sách
+                </button>
+            </div>
+            <p class="video-description" id="video-description">
+                Mô tả video sẽ được hiển thị ở đây.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Đợi ChaoticCipher được import xong
+            if (!window.ChaoticCipher) {
+                await new Promise(resolve => {
+                    const checkCipher = setInterval(() => {
+                        if (window.ChaoticCipher) {
+                            clearInterval(checkCipher);
+                            resolve();
+                        }
+                    }, 100);
+                });
+            }
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const videoId = urlParams.get('id');
+            let chaoticCipher = null;
+
+            if (!videoId) {
+                alert('Không tìm thấy video');
+                window.location.href = 'main.html';
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('access_token');
+                if (!token) throw new Error('Vui lòng đăng nhập để xem video');
+
+                // Khởi tạo ChaoticCipher từ token
+                console.log('Đang khởi tạo ChaoticCipher từ token...');
+                chaoticCipher = await window.ChaoticCipher.instanceFromToken(token);
+                console.log('Đã khởi tạo ChaoticCipher thành công');
+
+                // Lấy thông tin chi tiết của video từ backend
+                console.log('Đang lấy thông tin video...');
+                const videoInfoResponse = await axios.get(`http://localhost:8000/api/videos/${videoId}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                console.log('Nhận được thông tin video:', videoInfoResponse.data);
+
+                const { title, description } = videoInfoResponse.data;
+
+                // Cập nhật tiêu đề và mô tả video
+                document.title = `${title || 'Video'} - Netflix`;
+                const videoTitle = document.getElementById('video-title');
+                const videoDescription = document.getElementById('video-description');
+                if (videoTitle) videoTitle.textContent = title || 'Tiêu đề video';
+                if (videoDescription) videoDescription.textContent = description || '';
+
+                // Thiết lập video player và MediaSource
+                const encryptedVideoPlayer = document.getElementById('encryptedVideoPlayer');
+                let mediaSource;
+                let sourceBuffer;
+                const chunkSize = 1024 * 1024; // 1MB chunks
+                let encryptedCurrentPosition = 0;
+                let encryptedTotalSize = 0;
+                let isBuffering = false;
+                let bufferThreshold = 10 * 1024 * 1024; // 10MB buffer
+                let maxBufferSize = 30 * 1024 * 1024; // 30MB max buffer
+
+                async function loadNextEncryptedChunk(retryCount = 0) {
+                    const maxRetries = 3;
+                    const retryDelay = 1000; // 1 giây
+
+                    try {
+                        console.log(`Đang tải chunk mã hóa từ vị trí ${encryptedCurrentPosition}...`);
+                        const response = await axios.get(`http://localhost:8000/api/video/encrypted/${videoId}`, {
+                            headers: { 
+                                Authorization: `Bearer ${token}`,
+                                Range: `bytes=${encryptedCurrentPosition}-${encryptedCurrentPosition + chunkSize - 1}`
+                            },
+                            responseType: 'arraybuffer',
+                            timeout: 10000 // 10 giây timeout
+                        });
+
+                        console.log(`Nhận được chunk mã hóa, status: ${response.status}, size: ${response.data.byteLength} bytes`);
+
+                        if (response.status === 206) {
+                            const chunk = new Uint8Array(response.data);
+                            
+                            // Kiểm tra xem đây có phải chunk đầu tiên không
+                            const isFirstChunk = encryptedCurrentPosition === 0;
+                            const startByte = parseInt(response.headers['x-start-byte'] || '0');
+                            
+                            if (isFirstChunk || startByte > 0) {
+                                // Reset trạng thái cipher từ token để đảm bảo đồng bộ
+                                console.log('=== DEBUG CHUNK ===');
+                                console.log('Reset cipher state from token...');
+                                await chaoticCipher.resetStateFromToken(token);
+                                
+                                // Nếu không phải chunk đầu tiên, sinh keystream đến vị trí bắt đầu
+                                if (startByte > 0) {
+                                    console.log(`Sinh keystream đến vị trí byte ${startByte}...`);
+                                    chaoticCipher.generateKeystreamBytes(startByte);
+                                }
+                                
+                                console.log('Cipher state after reset:', chaoticCipher.saveState());
+                                
+                                // Log dữ liệu trước khi giải mã
+                                console.log('Dữ liệu trước khi giải mã:');
+                                console.log('Kích thước chunk:', chunk.length);
+                                console.log('16 bytes đầu tiên:', Array.from(chunk.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                                
+                                // Log keystream
+                                const keystream = chaoticCipher.generateKeystreamBytes(16);
+                                console.log('Keystream:');
+                                console.log('Kích thước:', keystream.length);
+                                console.log('16 bytes đầu:', Array.from(keystream.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                                
+                                // Log dữ liệu sau khi giải mã
+                                const decryptedTest = new Uint8Array(16);
+                                for(let i = 0; i < 16; i++) {
+                                    decryptedTest[i] = chunk[i] ^ keystream[i];
+                                }
+                                console.log('16 bytes đầu sau khi giải mã:', Array.from(decryptedTest).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                                
+                                // Kiểm tra box size và type
+                                if (decryptedTest.length >= 8) {
+                                    // Thử các cách đọc box size khác nhau
+                                    const boxSizeBE = new DataView(decryptedTest.buffer).getUint32(0, false); // big-endian
+                                    const boxSizeLE = new DataView(decryptedTest.buffer).getUint32(0, true);  // little-endian
+                                    const boxType = new TextDecoder().decode(decryptedTest.slice(4, 8));
+                                    
+                                    console.log('Box size (big-endian):', boxSizeBE);
+                                    console.log('Box size (little-endian):', boxSizeLE);
+                                    console.log('Box type:', boxType);
+                                    
+                                    // Kiểm tra các box type hợp lệ của MP4
+                                    const validBoxTypes = ['ftyp', 'moov', 'mdat', 'free', 'skip'];
+                                    
+                                    // Nếu box type không hợp lệ, thử đảo ngược thứ tự bytes
+                                    if (!validBoxTypes.includes(boxType)) {
+                                        console.log('Box type không hợp lệ, thử đảo ngược thứ tự bytes...');
+                                        
+                                        // Đảo ngược 4 bytes đầu tiên (box size)
+                                        const reversedSize = new Uint8Array(4);
+                                        for (let i = 0; i < 4; i++) {
+                                            reversedSize[i] = decryptedTest[3 - i];
+                                        }
+                                        
+                                        // Tạo chunk mới với box size đã đảo
+                                        const fixedChunk = new Uint8Array(chunk.length);
+                                        fixedChunk.set(reversedSize, 0);  // Box size đã đảo
+                                        fixedChunk.set(chunk.slice(4), 4); // Phần còn lại giữ nguyên
+                                        
+                                        // Thử giải mã lại
+                                        const fixedKeystream = chaoticCipher.generateKeystreamBytes(16);
+                                        const fixedDecrypted = new Uint8Array(16);
+                                        for(let i = 0; i < 16; i++) {
+                                            fixedDecrypted[i] = fixedChunk[i] ^ fixedKeystream[i];
+                                        }
+                                        
+                                        const fixedBoxSize = new DataView(fixedDecrypted.buffer).getUint32(0, false);
+                                        const fixedBoxType = new TextDecoder().decode(fixedDecrypted.slice(4, 8));
+                                        
+                                        console.log('Sau khi đảo box size:');
+                                        console.log('Box size:', fixedBoxSize);
+                                        console.log('Box type:', fixedBoxType);
+                                        
+                                        if (validBoxTypes.includes(fixedBoxType)) {
+                                            console.log('Đã tìm thấy box type hợp lệ sau khi đảo box size');
+                                            // Cập nhật chunk với box size đã đảo
+                                            chunk.set(fixedChunk);
+                                        } else {
+                                            throw new Error('Không thể tìm thấy box type hợp lệ sau khi giải mã');
+                                        }
+                                    }
+                                }
+                                
+                                console.log('=== END DEBUG ===');
+                            }
+                            
+                            // Xử lý chunk đã mã hóa (bao gồm hash và tag)
+                            if (chunk.length < 64) { // 32 bytes cho hash + 32 bytes cho tag
+                                throw new Error('Chunk quá nhỏ để chứa dữ liệu hợp lệ');
+                            }
+
+                            // Sử dụng decryptWithHash để giải mã toàn bộ chunk
+                            console.log('Đang giải mã chunk...');
+                            const decryptedChunk = await chaoticCipher.decryptWithHash(chunk);
+                            console.log('Đã giải mã chunk thành công, kích thước:', decryptedChunk.length);
+
+                            // Kiểm tra chunk đầu tiên
+                            if (isFirstChunk) {
+                                // Debug chi tiết chunk đầu tiên
+                                console.log('Debug chunk đầu tiên:');
+                                console.log('Kích thước chunk:', decryptedChunk.length);
+                                console.log('8 bytes đầu tiên:', Array.from(decryptedChunk.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                                
+                                // Kiểm tra header MP4
+                                if (decryptedChunk.length < 8) {
+                                    throw new Error('Chunk đầu tiên quá nhỏ để chứa header MP4');
+                                }
+
+                                // Kiểm tra box type MP4
+                                const boxSize = new DataView(decryptedChunk.buffer).getUint32(0, false); // false = big-endian
+                                const boxType = new TextDecoder().decode(decryptedChunk.slice(4, 8));
+                                console.log('Box size:', boxSize);
+                                console.log('Box type:', boxType);
+
+                                // Kiểm tra các box type hợp lệ của MP4
+                                const validBoxTypes = ['ftyp', 'moov', 'mdat', 'free', 'skip'];
+                                if (!validBoxTypes.includes(boxType)) {
+                                    throw new Error('Video không đúng định dạng MP4 sau khi giải mã');
+                                }
+                                console.log('Header MP4 hợp lệ:', boxType);
+
+                                // Khởi tạo MediaSource và SourceBuffer cho chunk đầu tiên
+                                if (!mediaSource) {
+                                    mediaSource = new MediaSource();
+                                    encryptedVideoPlayer.src = URL.createObjectURL(mediaSource);
+                                    
+                                    mediaSource.addEventListener('sourceopen', () => {
+                                        try {
+                                            sourceBuffer = mediaSource.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
+                                            sourceBuffer.mode = 'segments';
+                                            console.log('MediaSource đã sẵn sàng');
+                                        } catch (e) {
+                                            console.error('Lỗi khởi tạo SourceBuffer:', e);
+                                            throw e;
+                                        }
+                                    });
+                                }
+                            }
+
+                            // Đợi MediaSource sẵn sàng
+                            if (mediaSource.readyState === 'closed') {
+                                await new Promise(resolve => {
+                                    mediaSource.addEventListener('sourceopen', resolve, { once: true });
+                                });
+                            }
+
+                            // Đợi SourceBuffer sẵn sàng
+                            if (!sourceBuffer || sourceBuffer.updating) {
+                                await new Promise(resolve => {
+                                    const updateEndHandler = () => {
+                                        sourceBuffer.removeEventListener('updateend', updateEndHandler);
+                                        resolve();
+                                    };
+                                    sourceBuffer.addEventListener('updateend', updateEndHandler);
+                                });
+                            }
+
+                            // Thêm chunk vào SourceBuffer
+                            try {
+                                sourceBuffer.appendBuffer(decryptedChunk);
+                                encryptedCurrentPosition += chunk.length;
+                                encryptedTotalSize += chunk.length;
+                            } catch (e) {
+                                console.error('Lỗi khi thêm chunk vào SourceBuffer:', e);
+                                throw e;
+                            }
+
+                            // Nếu đã tải xong, đóng MediaSource
+                            if (response.headers['content-range']) {
+                                const match = response.headers['content-range'].match(/bytes \d+-\d+\/(\d+)/);
+                                if (match && parseInt(match[1]) <= encryptedCurrentPosition) {
+                                    console.log('Đã tải xong video');
+                                    mediaSource.endOfStream();
+                                }
+                            }
+                        } else {
+                            throw new Error(`Lỗi HTTP: ${response.status}`);
+                        }
+                    } catch (error) {
+                        console.error(`Lỗi khi tải chunk (lần thử ${retryCount + 1}/${maxRetries}):`, error);
+                        
+                        if (retryCount < maxRetries) {
+                            console.log(`Đợi ${retryDelay}ms trước khi thử lại...`);
+                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                            return loadNextEncryptedChunk(retryCount + 1);
+                        }
+
+                        // Nếu đã hết số lần thử lại
+                        if (error.response) {
+                            // Lỗi từ server
+                            if (error.response.status === 401) {
+                                alert('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+                                window.location.href = 'login.html';
+                            } else if (error.response.status === 404) {
+                                alert('Không tìm thấy video hoặc video đã bị xóa.');
+                                window.location.href = 'main.html';
+                            } else {
+                                alert(`Lỗi server: ${error.response.status} - ${error.response.statusText}`);
+                            }
+                        } else if (error.request) {
+                            // Không nhận được response
+                            alert('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.');
+                        } else {
+                            // Lỗi khác
+                            alert(`Lỗi: ${error.message}`);
+                        }
+                        throw error;
+                    }
+                }
+
+                // Bắt đầu tải chunk mã hóa đầu tiên
+                await loadNextEncryptedChunk();
+
+                // Xử lý sự kiện play cho video mã hóa
+                encryptedVideoPlayer.addEventListener('play', () => {
+                    if (encryptedCurrentPosition < encryptedVideoPlayer.duration * 1024 * 1024) {
+                        loadNextEncryptedChunk();
+                    }
+                });
+
+                // Thêm event listener để debug lỗi video mã hóa
+                encryptedVideoPlayer.addEventListener('error', (e) => {
+                    console.error('Lỗi video player mã hóa:', encryptedVideoPlayer.error);
+                    console.error('Error code:', encryptedVideoPlayer.error.code);
+                    console.error('Error message:', encryptedVideoPlayer.error.message);
+                    console.log('Tổng kích thước mã hóa:', encryptedTotalSize);
+                });
+
+                // Ngăn chặn tải xuống video mã hóa
+                encryptedVideoPlayer.addEventListener('contextmenu', (e) => e.preventDefault());
+
+                // Dọn dẹp khi rời trang
+                window.addEventListener('beforeunload', () => {
+                    URL.revokeObjectURL(encryptedVideoPlayer.src);
+                });
+
+                const playButton = document.getElementById('playButton');
+                if (playButton) {
+                    playButton.addEventListener('click', () => encryptedVideoPlayer.play());
+                }
+
+                // Hàm kiểm tra và quản lý buffer
+                async function manageBuffer() {
+                    if (isBuffering) return;
+                    
+                    const buffered = sourceBuffer.buffered;
+                    if (buffered.length === 0) return;
+                    
+                    const currentTime = encryptedVideoPlayer.currentTime;
+                    const bufferedEnd = buffered.end(buffered.length - 1);
+                    const bufferedStart = buffered.start(0);
+                    
+                    // Nếu buffer quá lớn, xóa phần đầu
+                    if (bufferedEnd - bufferedStart > maxBufferSize) {
+                        const removeEnd = bufferedStart + (bufferedEnd - bufferedStart - maxBufferSize);
+                        if (removeEnd > bufferedStart) {
+                            try {
+                                await new Promise((resolve, reject) => {
+                                    if (sourceBuffer.updating) {
+                                        sourceBuffer.addEventListener('updateend', () => {
+                                            try {
+                                                sourceBuffer.remove(bufferedStart, removeEnd);
+                                                resolve();
+                                            } catch (e) {
+                                                reject(e);
+                                            }
+                                        }, { once: true });
+                                    } else {
+                                        try {
+                                            sourceBuffer.remove(bufferedStart, removeEnd);
+                                            resolve();
+                                        } catch (e) {
+                                            reject(e);
+                                        }
+                                    }
+                                });
+                            } catch (e) {
+                                console.error('Lỗi khi xóa buffer:', e);
+                            }
+                        }
+                    }
+                    
+                    // Nếu buffer sắp hết, tải thêm
+                    if (bufferedEnd - currentTime < bufferThreshold / 2) {
+                        isBuffering = true;
+                        try {
+                            await loadNextEncryptedChunk();
+                        } finally {
+                            isBuffering = false;
+                        }
+                    }
+                }
+
+                // Thêm event listener cho video player
+                encryptedVideoPlayer.addEventListener('timeupdate', () => {
+                    if (!isBuffering) {
+                        manageBuffer();
+                    }
+                });
+
+                encryptedVideoPlayer.addEventListener('waiting', () => {
+                    console.log('Video đang buffer...');
+                    if (!isBuffering) {
+                        manageBuffer();
+                    }
+                });
+
+                encryptedVideoPlayer.addEventListener('playing', () => {
+                    console.log('Video đang phát');
+                    if (!isBuffering) {
+                        manageBuffer();
+                    }
+                });
+
+            } catch (error) {
+                console.error('Lỗi khi tải video:', error);
+                alert(error.message || 'Không thể phát video');
+                window.location.href = 'main.html';
+            }
+        });
+
+        // Thêm cleanup khi đóng video
+        function cleanup() {
+            if (mediaSource && mediaSource.readyState === 'open') {
+                try {
+                    if (sourceBuffer && !sourceBuffer.updating) {
+                        sourceBuffer.abort();
+                    }
+                    mediaSource.endOfStream();
+                } catch (e) {
+                    console.error('Lỗi khi cleanup MediaSource:', e);
+                }
+            }
+            
+            if (encryptedVideoPlayer.src) {
+                URL.revokeObjectURL(encryptedVideoPlayer.src);
+                encryptedVideoPlayer.src = '';
+            }
+            
+            mediaSource = null;
+            sourceBuffer = null;
+            encryptedCurrentPosition = 0;
+            encryptedTotalSize = 0;
+            isBuffering = false;
+        }
+
+        // Thêm event listener cho cleanup
+        window.addEventListener('beforeunload', cleanup);
+        encryptedVideoPlayer.addEventListener('ended', cleanup);
+
+        // Thêm nút đóng video
+        const closeButton = document.createElement('button');
+        closeButton.className = 'action-button';
+        closeButton.innerHTML = '<span>✕</span> Đóng video';
+        closeButton.onclick = () => {
+            cleanup();
+            window.location.href = 'main.html';
+        };
+        document.querySelector('.video-actions').appendChild(closeButton);
+    </script>
+
+</body>
+</html>

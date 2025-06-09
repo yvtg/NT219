@@ -6,6 +6,7 @@ import logging
 
 videos_bp = Blueprint('videos', __name__)
 
+
 @videos_bp.route('/videos', methods=['POST'])
 @jwt_required()
 def add_video():
@@ -61,6 +62,8 @@ def add_video():
     return jsonify({'message': 'Video added', 'id': video_id}), 201
 
 # Thêm video mẫu khi khởi tạo (tùy chọn)
+
+
 @videos_bp.route('/init_videos', methods=['POST'])
 @jwt_required()
 def init_videos():
@@ -83,11 +86,16 @@ def init_videos():
     conn = get_db_connection()
     c = conn.cursor()
     sample_videos = [
-        ('Phim hành động 1', 'Hành động bùng nổ', '/api/placeholder/300/169?text=1', 'video1.mp4', 'popular', True),
-        ('Phim hài 2', 'Hài hước', '/api/placeholder/300/169?text=2', 'video2.mp4', 'popular', False),
-        ('Phim tình cảm 3', 'Lãng mạn', '/api/placeholder/300/169?text=3', 'video3.mp4', 'popular', False),
-        ('Series hấp dẫn 1', 'Xu hướng', '/api/placeholder/300/169?text=Trend1', 'trend1.mp4', 'trending', False),
-        ('Phim đã xem 1', 'Xem lại', '/api/placeholder/300/169?text=Rewatch1', 'rewatch1.mp4', 'rewatch', False),
+        ('Phim hành động 1', 'Hành động bùng nổ',
+         '/api/placeholder/300/169?text=1', 'video1.mp4', 'popular', True),
+        ('Phim hài 2', 'Hài hước', '/api/placeholder/300/169?text=2',
+         'video2.mp4', 'popular', False),
+        ('Phim tình cảm 3', 'Lãng mạn', '/api/placeholder/300/169?text=3',
+         'video3.mp4', 'popular', False),
+        ('Series hấp dẫn 1', 'Xu hướng', '/api/placeholder/300/169?text=Trend1',
+         'trend1.mp4', 'trending', False),
+        ('Phim đã xem 1', 'Xem lại', '/api/placeholder/300/169?text=Rewatch1',
+         'rewatch1.mp4', 'rewatch', False),
     ]
     for title, desc, thumb, video, cat, feat in sample_videos:
         c.execute(

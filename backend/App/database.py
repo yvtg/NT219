@@ -4,12 +4,14 @@ from psycopg2.extras import RealDictCursor
 import os
 load_dotenv(dotenv_path='D:\\NT219\\NT219\\backend\\config\\.env')
 
+
 def get_db_connection():
     """Tạo kết nối đến Neon PostgreSQL sử dụng DATABASE_URL"""
     database_url = os.getenv('DATABASE_URL')
     if not database_url:
         raise ValueError("DATABASE_URL not set in environment variables")
     return psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+
 
 def init_db():
     """Khởi tạo bảng users và videos trong Neon PostgreSQL"""
