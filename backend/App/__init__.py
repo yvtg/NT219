@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_jwt_extended import JWTManager, get_jwt, get_jwt_identity, jwt_required
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -7,6 +7,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 from psycopg2.extras import RealDictCursor
+from requests import Response
 from App.database import get_db_connection
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', 'config', '.env'))
@@ -35,8 +36,8 @@ def create_app():
         'version': '1.0',
         'description': 'API for Authentication and Authorization System'
     }
-    swagger = Swagger(app)
 
+    swagger = Swagger(app)
     # Đăng ký blueprints
     from .auth import auth_bp
     from .routes import routes_bp

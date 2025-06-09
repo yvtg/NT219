@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, request
-from flask_jwt_extended import get_jwt, jwt_required
+import os
+from flask import Blueprint, jsonify, request, send_file, send_from_directory
+from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
 from .database import get_db_connection
 from psycopg2.extras import RealDictCursor
 import logging
@@ -98,3 +99,122 @@ def init_videos():
     conn.close()
     logging.info("Sample videos initialized")
     return jsonify({'message': 'Videos initialized'}), 200
+
+@videos_bp.route('/')
+def serve_index():
+    """
+    Serve static files (CSS, JS, images, etc.) from the frontend directory.
+    ---
+    tags:
+      - Static
+    summary: Serve static file
+    parameters:
+      - name: filename
+        in: path
+        type: string
+        required: true
+        description: The path to the static file.
+    responses:
+      200:
+        description: Static file returned successfully.
+      404:
+        description: File not found.
+    """
+    return send_from_directory('../frontend', 'index.html')
+
+
+@videos_bp.route('/<path:filename>')
+def serve_static_files(filename):
+    """
+    Serve static files from frontend directory.
+
+    ---
+    tags:
+      - Static Files
+    summary: Serve a file from the frontend directory by filename/path
+    parameters:
+      - name: filename
+        in: path
+        type: string
+        required: true
+        description: Relative path to the file inside frontend folder, e.g. 'video/public_key.pem'
+    responses:
+      200:
+        description: File successfully served
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      404:
+        description: File not found
+    """
+    frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'frontend/video'))
+    print(f"Serving file: {filename} from directory: {frontend_dir}")
+    return send_from_directory(frontend_dir, filename)
+
+
+@videos_bp.route('/get-key')
+def get_hls_key():
+    """
+    Provide the digital signature file of the protected video.
+    ---
+    tags:
+      - Secure Video Access
+    summary: Get video digital signature
+    security:
+      - BearerAuth: []
+    responses:
+      200:
+        description: Digital signature file (video.sig) sent successfully.
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      401:
+        description: Unauthorized access.
+    """
+    key_path = os.path.join(os.path.dirname(__file__), '..','..', 'media', 'enc.key')
+    return send_file(key_path)
+
+
+@videos_bp.route('/get-signature')
+def get_signature():
+    """
+    Provide the digital signature file associated with the protected video.
+
+    Only accessible to authenticated users via JWT.
+
+    Returns:
+        flask.Response: The digital signature file (`video.sig`) for download.
+    """
+    print("Gửi file chữ ký số...")
+    sig_path = os.path.join(os.path.dirname(__file__), '..','..', 'frontend', 'video', 'video.sig')
+    return send_file(sig_path, as_attachment=True)
+
+
+@videos_bp.route('/get-public-key')
+def get_public_key():
+    """
+    Provide the public key for verifying the digital signature.
+    ---
+    tags:
+      - Secure Video Access
+    summary: Get public key
+    security:
+      - BearerAuth: []
+    responses:
+      200:
+        description: Public key (PEM format) returned.
+        content:
+          application/x-pem-file:
+            schema:
+              type: string
+              format: binary
+      401:
+        description: Unauthorized access.
+    """
+    print("Gửi file public key...")
+    key_path = os.path.join(os.path.dirname(__file__), '..','..', 'frontend', 'video', 'public_key.pem')
+    return send_file(key_path, as_attachment=True)
