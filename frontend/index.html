@@ -56,7 +56,7 @@
                             <input type="text" class="form-input" id="totp_code" placeholder=" ">
                             <label for="totp_code" class="form-label">Mã 2FA (nếu có)</label>
                         </div>
-                        <div id="recaptcha" class="g-recaptcha" style="display: none;" data-sitekey="your_recaptcha_v2_site_key"></div>
+                        <div id="recaptcha" class="g-recaptcha" style="display: none;" data-sitekey="6LcsvFgrAAAAFDwPliDB_yHROxGRCzQYwX3oQTC"></div>
                         <div id="login-error" class="error-message"></div>
                         <button type="submit" class="btn-login">Đăng nhập</button>
                         <div class="form-help">
@@ -67,6 +67,15 @@
                             <div class="help">
                                 <a href="#">Bạn cần trợ giúp?</a>
                             </div>
+                        </div>
+                        <div class="social-login-divider">
+                        <span>HOẶC</span>
+                        </div>
+                        <div class="social-login-buttons">
+                            <button type="button" class="btn-social google" id="google-login-btn">
+                                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google logo">
+                                <span>Đăng nhập với Google</span>
+                            </button>
                         </div>
                         <div class="signup">
                             Bạn mới tham gia Netflix? <a href="#" id="switch-to-signup">Đăng ký ngay</a>
@@ -137,5 +146,5 @@
                 </div>
             </div>
         </section>
-
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
         <script src="./auth.js"></script>

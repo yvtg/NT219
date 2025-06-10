@@ -1,3 +1,19 @@
+from google_auth_oauthlib.flow import Flow
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+from flask_jwt_extended import get_jti
+from flask_jwt_extended import JWTManager
+import requests
+import redis
+import base64
+import io
+import qrcode
+import pyotp
+from collections import defaultdict
+from datetime import datetime, timedelta
+import uuid
+import logging
+import re
 from webauthn import generate_registration_options, verify_registration_response, generate_authentication_options, verify_authentication_response
 from webauthn.helpers.cose import COSEAlgorithmIdentifier
 from webauthn.helpers.structs import PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions
@@ -5,7 +21,8 @@ import hashlib
 import secrets
 from dotenv import load_dotenv
 from flask import Blueprint, json, redirect, request, jsonify, make_response
-from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, get_jwt_identity, jwt_required, verify_jwt_in_request
+from flask_jwt_extended.exceptions import NoAuthorizationError
 from itsdangerous import URLSafeTimedSerializer
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -14,25 +31,14 @@ from .database import get_db_connection
 import smtplib
 from email.mime.text import MIMEText
 import os
-import re
-import logging
-import uuid
-from datetime import datetime, timedelta
-from collections import defaultdict
-import pyotp
-import qrcode
-import io
-import base64
-import redis
-import requests
-from flask_jwt_extended import JWTManager
-
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 jwt = JWTManager()
 
 load_dotenv(dotenv_path='D:\\NT219\\NT219\\backend\\config\\.env')
 
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
 RECAPTCHA_SECRET_KEY = os.getenv('RECAPTCHA_SECRET_KEY')
+print(RECAPTCHA_SECRET_KEY)
 RECAPTCHA_VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify'
 
 auth_bp = Blueprint('auth', __name__)
@@ -61,9 +67,8 @@ def set_csrf_cookie(response, token):
 
 def get_device_fingerprint(request):
     user_agent = request.headers.get('User-Agent', '')
-    accept_language = request.headers.get('Accept-Language', '')
-    fingerprint = hashlib.sha256(
-        f"{user_agent}:{accept_language}".encode()).hexdigest()
+    # Chỉ băm user_agent để đảm bảo tính nhất quán
+    fingerprint = hashlib.sha256(user_agent.encode()).hexdigest()
     return fingerprint
 
 
@@ -259,13 +264,79 @@ def is_strong_password(password, username, email):
 
 
 def verify_recaptcha(recaptcha_response):
+    """
+    Hàm xác thực reCAPTCHA phiên bản cuối cùng, có gửi kèm IP.
+    """
+    if not recaptcha_response:
+        logging.warning(
+            "verify_recaptcha được gọi nhưng không có recaptcha_response token.")
+        return False
+
+    # 2. Chuẩn bị dữ liệu để gửi đến Google
     payload = {
         'secret': RECAPTCHA_SECRET_KEY,
-        'response': recaptcha_response
+        'response': recaptcha_response,
+        'remoteip': request.remote_addr  # <-- THAY ĐỔI QUAN TRỌNG NHẤT
     }
-    response = requests.post(RECAPTCHA_VERIFY_URL, data=payload)
-    result = response.json()
-    return result.get('success', False)
+
+    logging.info(
+        f"Gửi yêu cầu xác thực reCAPTCHA cho IP: {request.remote_addr}")
+
+    # 3. Gửi request và bắt mọi loại lỗi
+    try:
+        response = requests.post(RECAPTCHA_VERIFY_URL, data=payload, timeout=5)
+        response.raise_for_status()
+
+        result = response.json()
+        logging.info(f"Phản hồi từ Google reCAPTCHA API: {result}")
+
+        if result.get('success'):
+            logging.info("Xác thực reCAPTCHA thành công!")
+            return True
+        else:
+            error_codes = result.get('error-codes', [])
+            logging.error(
+                f"Xác thực reCAPTCHA thất bại với mã lỗi: {error_codes}")
+            return False
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Lỗi khi gửi request đến Google reCAPTCHA API: {e}")
+        return False
+    except Exception as e:
+        logging.error(f"Lỗi không xác định trong hàm verify_recaptcha: {e}")
+        return False
+
+
+def check_if_password_pwned(password):
+    """
+    Kiểm tra mật khẩu với API Pwned Passwords của HIBP một cách an toàn.
+    """
+    # 1. Băm mật khẩu bằng SHA-1
+    sha1_password = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+    prefix, suffix = sha1_password[:5], sha1_password[5:]
+
+    url = f'https://api.pwnedpasswords.com/range/{prefix}'
+
+    try:
+        # SỬA LỖI 1: Dùng thư viện 'requests' để gửi request đi
+        response = requests.get(url, timeout=5)  # Thêm timeout để tránh treo
+        response.raise_for_status()  # Báo lỗi nếu status code là 4xx hoặc 5xx
+
+        # SỬA LỖI 2: Toàn bộ logic xử lý response được đưa vào trong khối 'try'
+        hashes = (line.split(':') for line in response.text.splitlines())
+        for h, count in hashes:
+            if h == suffix:
+                # Nếu tìm thấy, trả về số lần bị lộ
+                return int(count)
+
+        # Nếu vòng lặp kết thúc mà không tìm thấy, trả về 0
+        return 0
+
+    except requests.RequestException as e:
+        # SỬA LỖI 3: Nếu có bất kỳ lỗi mạng nào, log lại và trả về 0
+        # Điều này đảm bảo tính năng không làm gián đoạn người dùng khi API HIBP gặp sự cố.
+        logging.error(f"Could not connect to HIBP API: {e}")
+        return 0
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -312,8 +383,11 @@ def register():
     is_strong, message = is_strong_password(password, username, email)
     if not is_strong:
         return jsonify({'message': message}), 400
-
+    is_password_pwned = check_if_password_pwned(password)
+    if is_password_pwned:
+        return jsonify({'message': 'Password has been compromised'}), 400
     ip = request.remote_addr
+
     if not check_rate_limit(ip, 'register'):
         return jsonify({'message': 'Too many registration attempts. Please try again later.'}), 400
 
@@ -414,13 +488,12 @@ def enable_2fa():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute(
-            'SELECT verified, is_2fa_enabled FROM users WHERE email = %s', (email,))
+        c.execute('SELECT verified, is_2fa_enabled FROM users WHERE id = %s', (id,))
         user = c.fetchone()
         if not user or not user['verified']:
             return jsonify({'message': 'User not found or not verified'}), 400
@@ -432,11 +505,11 @@ def enable_2fa():
         c.execute(
             'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT FALSE')
         c.execute(
-            'UPDATE users SET totp_secret = %s, is_2fa_enabled = TRUE WHERE email = %s', (totp_secret, email))
+            'UPDATE users SET totp_secret = %s, is_2fa_enabled = TRUE WHERE id = %s', (totp_secret, id))
         conn.commit()
 
         totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(
-            name=email, issuer_name='Netflix')
+            name=id, issuer_name='Netflix')
         qr = qrcode.QRCode()
         qr.add_data(totp_uri)
         qr.make(fit=True)
@@ -445,7 +518,7 @@ def enable_2fa():
         img.save(buffered, format="PNG")
         qr_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        logging.info(f"2FA enabled for {email}")
+        logging.info(f"2FA enabled for {id}")
         response = make_response(jsonify({
             'message': '2FA enabled, scan the QR code with your authenticator app',
             'qr_code': f'data:image/png;base64,{qr_base64}',
@@ -453,7 +526,7 @@ def enable_2fa():
         }), 200)
         return response
     except Exception as e:
-        logging.error(f"Error enabling 2FA for {email}: {str(e)}")
+        logging.error(f"Error enabling 2FA for {id}: {str(e)}")
         return jsonify({'message': 'Failed to enable 2FA'}), 500
     finally:
         conn.close()
@@ -493,7 +566,7 @@ def verify_2fa():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
     data = request.get_json()
     if not data or 'totp_code' not in data:
         return jsonify({'message': 'Invalid or missing TOTP code'}), 400
@@ -506,7 +579,7 @@ def verify_2fa():
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
         c.execute(
-            'SELECT verified, totp_secret, is_2fa_enabled FROM users WHERE email = %s', (email,))
+            'SELECT verified, totp_secret, is_2fa_enabled FROM users WHERE id = %s', (id,))
         user = c.fetchone()
         if not user:
             return jsonify({'message': 'User not found'}), 404
@@ -523,7 +596,7 @@ def verify_2fa():
         conn.close()
         return jsonify({'message': '2FA verified successfully', 'is_2fa_enabled': True}), 200
     except Exception as e:
-        logging.error(f"Error verifying 2FA for {email}: {str(e)}")
+        logging.error(f"Error verifying 2FA for {id}: {str(e)}")
         return jsonify({'message': 'Failed to verify 2FA'}), 500
     finally:
         conn.close()
@@ -549,19 +622,19 @@ def check_2fa_status():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (email,))
+        c.execute('SELECT is_2fa_enabled FROM users WHERE id = %s', (id,))
         user = c.fetchone()
         if not user:
             return jsonify({'message': 'User not found'}), 404
 
         return jsonify({'is_2fa_enabled': user['is_2fa_enabled'] or False}), 200
     except Exception as e:
-        logging.error(f"Error checking 2FA status for {email}: {str(e)}")
+        logging.error(f"Error checking 2FA status for {id}: {str(e)}")
         return jsonify({'message': 'Failed to check 2FA status'}), 500
     finally:
         conn.close()
@@ -636,12 +709,12 @@ def disable_2fa():
       500:
         description: Server error
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (email,))
+        c.execute('SELECT is_2fa_enabled FROM users WHERE email = %s', (id,))
         user = c.fetchone()
         if not user:
             return jsonify({'message': 'User not found'}), 404
@@ -649,12 +722,12 @@ def disable_2fa():
             return jsonify({'message': '2FA not enabled'}), 400
 
         c.execute(
-            'UPDATE users SET is_2fa_enabled = FALSE, totp_secret = NULL WHERE email = %s', (email,))
+            'UPDATE users SET is_2fa_enabled = FALSE, totp_secret = NULL WHERE id = %s', (id,))
         conn.commit()
         conn.close()
         return jsonify({'message': '2FA disabled successfully'}), 200
     except Exception as e:
-        logging.error(f"Error disabling 2FA for {email}: {str(e)}")
+        logging.error(f"Error disabling 2FA for {id}: {str(e)}")
         return jsonify({'message': 'Failed to disable 2FA'}), 500
     finally:
         conn.close()
@@ -694,12 +767,12 @@ def login():
     password = data.get('password')
     totp_code = data.get('totp_code')
     recaptcha_response = data.get('recaptcha_response')
-
+    print(recaptcha_response)
     ip = request.remote_addr
     login_key = f"login:{email}:{ip}"
     max_attempts = 5
-    if not check_rate_limit(ip, login_key, max_attempts=max_attempts, expire=900):
-        return jsonify({'message': 'Too many login attempts. Please try again later.'}), 429
+    # if not check_rate_limit(ip, login_key, max_attempts=max_attempts, expire=900):
+    #     return jsonify({'message': 'Too many login attempts. Please try again later.'}), 429
 
     attempts = redis_client.get(login_key)
     if attempts and int(attempts) >= 3 and not verify_recaptcha(recaptcha_response):
@@ -726,26 +799,72 @@ def login():
                 redis_client.incr(login_key)
                 logging.warning(f"Invalid 2FA code for {email}")
                 return jsonify({'message': 'Invalid 2FA code'}), 401
-
-        # Kiểm tra device fingerprint
-        # fingerprint = get_device_fingerprint(request)
-        # if not verify_device(email, fingerprint):
-        #     send_device_verification_email(email, fingerprint)
-        #     return jsonify({'message': 'Unknown device. Please verify via email.'}), 403
-
+        user_identity_value = user.get('id')
         redis_client.delete(login_key)
-        access_token = create_access_token(
-            identity=email, additional_claims={'role': user['role']})
-        refresh_token = create_refresh_token(identity=email)
+
+        identity = {'email': email, 'user_id': user['id']}
         csrf_token = generate_csrf_token()
-        return jsonify({
-            'message': 'Login successful',
-            'access_token': access_token,
-            'refresh_token': refresh_token,
-            'csrf_token': csrf_token,
-            'role': user['role'],
-            'email': email
-        }), 200
+        fingerprint = get_device_fingerprint(request)
+        user_agent = request.headers.get('User-Agent', '')
+        ip = request.remote_addr
+
+        c.execute("""
+        SELECT id from user_devices where user_id=%s and device_fingerprint = %s
+        """, (user['id'], fingerprint))
+
+        existing_device = c.fetchone()
+        if existing_device:
+            logging.info(
+                f"Known device login for user {email} from fingerprint {fingerprint[:10]}...")
+            user_identity = str(user['id'])
+            access_token = create_access_token(identity=user_identity, additional_claims={
+                                               'role': user['role'], 'email': user['email']})
+            refresh_token = create_refresh_token(identity=user_identity)
+            refresh_jti = get_jti(encoded_token=refresh_token)
+            c.execute("""
+            UPDATE user_devices SET last_active_at=CURRENT_TIMESTAMP,jti=%s WHERE user_id=%s 
+                      """, (refresh_jti, existing_device['id']))
+            conn.commit()
+            return jsonify({
+                'message': 'Login successful',
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'csrf_token': csrf_token,
+                'role': user['role'],
+                'email': email
+            }), 200
+        else:
+            logging.warning(
+                f"New device detected for user {email}. Verification required.")
+            ts = URLSafeTimedSerializer(os.getenv("SECRET_KEY"))
+            verification_token = ts.dumps(
+                {"user_id": user['id'], "fingerprint": fingerprint}, salt='device-verify-salt')
+            try:
+                verification_link = f"http://localhost:8000/api/auth/verify-device?token={verification_token}"
+                # (Code gửi email tương tự như hàm send_verification_email của bạn)
+                msg = MIMEText(
+                    f"We detected a login from a new device. If this was you, please verify the device by clicking this link: {verification_link}\nThis link is valid for 10 minutes.")
+                msg['Subject'] = "New Device Login Verification"
+                msg['From'] = os.getenv('EMAIL_FROM')
+                msg['To'] = email
+
+                with smtplib.SMTP(os.getenv('SMTP_SERVER'), int(os.getenv('SMTP_PORT'))) as server:
+                    server.starttls()
+                    server.login(os.getenv('SMTP_USERNAME'),
+                                 os.getenv('SMTP_PASSWORD'))
+                    server.sendmail(os.getenv('EMAIL_FROM'),
+                                    email, msg.as_string())
+            except Exception as e:
+                logging.error(
+                    f"Failed to send device verification email to {email}: {str(e)}")
+                # Dù gửi mail lỗi, vẫn phải báo lỗi cho người dùng một cách an toàn
+                return jsonify({'message': 'An internal error occurred. Please try again later.'}), 500
+
+            # Trả về thông báo yêu cầu xác thực
+            return jsonify({
+                'message': 'New device detected. Please check your email to verify this device.',
+                'requires_device_verification': True
+            }), 401  # Dùng 401 Unauthorized vì chưa cấp quyền
     except Exception as e:
         logging.error(f"Error logging in user {email}: {str(e)}")
         return jsonify({'message': 'Login failed'}), 500
@@ -754,6 +873,99 @@ def login():
 
 
 ts = URLSafeTimedSerializer(os.getenv("SECRET_KEY"))
+
+
+@auth_bp.route('verify-device', methods=['GET'])
+def verify_device_token():
+    """
+    Verify a new device using a token sent via email.
+
+    This endpoint is used to verify a new device attempting to access a user's account.
+    It expects a token passed as a query parameter. The token is generated using a 
+    `URLSafeTimedSerializer` with a limited lifetime (10 minutes). If the token is valid 
+    and has not expired, the device will be marked as verified in the database.
+
+    Query Parameters:
+        token (str): A time-limited signed token containing the user ID and device fingerprint.
+
+    Returns:
+        JSON response with a success or error message:
+            200 OK - if the device is verified successfully.
+            400 Bad Request - if the token is missing, invalid, or expired.
+    """
+    token = request.args.get('token')
+    if not token:
+        return jsonify({'message': 'Missing token'}), 400
+
+    ts = URLSafeTimedSerializer(os.getenv("SECRET_KEY"))
+    conn = None
+    try:
+        # Giải mã token, max_age là thời gian hết hạn (tính bằng giây)
+        data = ts.loads(token, salt='device-verify-salt',
+                        max_age=600)  # 10 phút
+        user_id = data['user_id']
+        fingerprint = data['fingerprint']
+
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        c.execute("""
+            INSERT INTO user_devices (user_id, device_fingerprint, is_verified, user_agent, ip_address)
+            VALUES (%s, %s, TRUE, %s, %s)
+            ON CONFLICT (user_id, device_fingerprint) DO UPDATE SET is_verified = TRUE
+        """, (user_id, fingerprint, request.headers.get('User-Agent', ''), request.remote_addr))
+
+        conn.commit()
+        logging.info(
+            f"Device with fingerprint {fingerprint[:10]}... verified for user_id {user_id}")
+
+        # return jsonify({'message': 'Device verified successfully. You can now log in from this device.'}), 200
+        return redirect('http://127.0.0.1:5501/frontend/device-verified.html')
+
+    except Exception as e:
+        logging.error(
+            f"Invalid or expired device verification token: {str(e)}")
+        return jsonify({'message': 'The verification link is invalid or has expired.'}), 400
+    finally:
+        if conn:
+            conn.close()
+
+
+@auth_bp.route("/devices", methods=['GET'])
+@jwt_required()
+def get_devices():
+    """
+    Lấy danh sách các thiết bị đang đăng nhập của người dùng.
+    ---
+    tags:
+      - Device Management
+    security:
+      - Bearer: []
+    responses:
+      200:
+        description: Danh sách các thiết bị.
+    """
+    user_id = get_jwt_identity()
+    try:
+        conn = get_db_connection()
+        c = conn.cursor(cursor_factory=RealDictCursor)
+        c.execute(
+            """
+            SELECT id,last_active_at, created_at, device_fingerprint,user_agent 
+            FROM user_devices 
+            WHERE user_id = %s 
+            ORDER BY last_active_at DESC
+            """,
+            (user_id,)
+        )
+        devices = c.fetchall()
+        return jsonify(devices), 200
+    except Exception as e:
+        logging.error(f"Error fetching devices for user {user_id}: {e}")
+        return jsonify({'message': 'Could not retrieve devices'}), 500
+    finally:
+        if conn:
+            conn.close()
 
 
 @auth_bp.route('/request-magic-link', methods=['POST'])
@@ -836,32 +1048,76 @@ def magic_login():
         description: Invalid or expired token
     """
     token = request.args.get('token')
+    conn = None
     try:
-        email = ts.loads(token, salt='magic-link',
-                         max_age=600)  # Hết hạn sau 10 phút
+        # Lấy email từ token của magic link
+        email = ts.loads(token, salt='magic-link', max_age=600)
+
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
         c.execute('SELECT * FROM users WHERE email = %s AND verified = 1', (email,))
         user = c.fetchone()
+
         if not user:
             return jsonify({'message': 'Invalid or expired token'}), 400
 
-        access_token = create_access_token(
-            identity=email, additional_claims={'role': user['role']})
-        refresh_token = create_refresh_token(identity=email)
-        csrf_token = generate_csrf_token()
+        # === LOGIC MỚI BẮT ĐẦU TỪ ĐÂY ===
 
-        # Redirect kèm token trên URL để frontend lấy và lưu vào localStorage
+        # 1. Tạo token với cấu trúc mới (identity là user_id)
+        user_identity = str(user['id'])
+        access_token = create_access_token(
+            identity=user_identity,
+            additional_claims={'role': user['role'], 'email': user['email']}
+        )
+        refresh_token = create_refresh_token(identity=user_identity)
+
+        # 2. Ghi lại phiên đăng nhập vào user_devices (Logic Upsert)
+        refresh_jti = get_jti(encoded_token=refresh_token)
+        fingerprint = get_device_fingerprint(request)
+        ip = request.remote_addr
+        user_agent_string = request.headers.get('User-Agent', '')
+
+        c.execute(
+            "SELECT id FROM user_devices WHERE user_id = %s AND device_fingerprint = %s",
+            (user['id'], fingerprint)
+        )
+        existing_device = c.fetchone()
+
+        if existing_device:
+            # Nếu thiết bị đã biết -> UPDATE
+            c.execute(
+                """
+                UPDATE user_devices SET jti = %s, last_active_at = CURRENT_TIMESTAMP, ip_address = %s, 
+                WHERE id = %s
+                """,
+                (refresh_jti, ip, existing_device['id'])
+            )
+        else:
+            # Nếu thiết bị mới -> INSERT
+            c.execute(
+                """
+                INSERT INTO user_devices (user_id, device_fingerprint, jti, user_agent, ip_address)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (user['id'], fingerprint, refresh_jti, user_agent_string, ip)
+            )
+
+        conn.commit()
+
+        # 3. Chuyển hướng người dùng về frontend với token mới
         redirect_url = f'http://127.0.0.1:5501/frontend/main.html?access_token={access_token}&refresh_token={refresh_token}'
         response = make_response(redirect(redirect_url))
-        # Không cần set_cookie nữa
-        logging.info(f"User {email} logged in via magic link")
+
+        logging.info(
+            f"User {email} logged in via magic link from device {fingerprint[:10]}...")
         return response
+
     except Exception as e:
         logging.error(f"Error processing magic link: {str(e)}")
         return jsonify({'message': 'Invalid or expired token'}), 400
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 @auth_bp.route('/refresh', methods=['POST'])
@@ -904,12 +1160,12 @@ def check_session():
     """
     current_ip = request.remote_addr
     user_agent = request.headers.get('User-Agent')
-    email = get_jwt_identity()
+    user_id = get_jwt_identity()
 
     conn = get_db_connection()
     c = conn.cursor(cursor_factory=RealDictCursor)
     c.execute(
-        'SELECT last_ip, totp_secret, role FROM users WHERE email = %s', (email,))
+        'SELECT last_ip, totp_secret, role FROM users WHERE id = %s', (user_id,))
     result = c.fetchone()
     conn.close()
 
@@ -919,12 +1175,11 @@ def check_session():
     last_ip = result['last_ip']
     if last_ip and last_ip != current_ip:
         logging.warning(
-            f"Suspicious session for {email}: IP changed from {last_ip} to {current_ip}")
+            f"Suspicious session for {user_id}: IP changed from {last_ip} to {current_ip}")
 
     response = make_response(jsonify({
         'ip': current_ip,
         'user_agent': user_agent,
-        'email': email,
         'totp_secret': bool(result['totp_secret']),
         'role': result['role'] or 'user'
     }), 200)
@@ -946,7 +1201,17 @@ def logout():
             description: User logged out
     """
     jti = get_jwt()['jti']
+    user_id = get_jwt_identity()
     try:
+        fingerprint = get_device_fingerprint(request)
+        if fingerprint:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM user_devices WHERE user_id=%s AND device_fingerprint=%s",
+                (int(user_id), fingerprint)
+            )
+            conn.commit()
         redis_client.setex(jti, 24 * 3600, 'blacklisted')
         logging.info(
             f"User {get_jwt_identity()} logged out, token {jti} blacklisted")
@@ -960,6 +1225,9 @@ def logout():
             jsonify({'message': 'Logout successful (token not blacklisted)'}), 200)
         response.delete_cookie('csrf_token')
         return response
+    finally:
+        if conn:
+            conn.close()
 
 
 @auth_bp.route('/api/content', methods=['GET'])
@@ -976,7 +1244,7 @@ def get_content():
         200:
             description: Content for user
     """
-    email = get_jwt_identity()
+    id = get_jwt_identity()
     claims = get_jwt()
     role = claims.get('role', 'user')
 
@@ -1003,7 +1271,7 @@ def get_content():
             jsonify({'role': role, 'content': content}), 200)
         return response
     except Exception as e:
-        logging.error(f"Error fetching content for {email}: {str(e)}")
+        logging.error(f"Error fetching content for {id}: {str(e)}")
         return jsonify({'message': 'Error fetching content'}), 500
     finally:
         c.close()
@@ -1061,366 +1329,399 @@ def update_user(email):
     return jsonify({'message': 'User role updated'}), 200
 
 
-@jwt.token_in_blocklist_loader
-def check_if_token_revoked(jwt_header, jwt_payload):
-    jti = jwt_payload['jti']
-    token = redis_client.get(jti)
-    return token is not None
-# Login with sinh trac hoc
-
-
-@auth_bp.route('/webauthn/register', methods=['POST'])
+@auth_bp.route('/devices/<int:device_id>/logout', methods=['POST'])
 @jwt_required()
-def webauthn_register():
+def logout_device(device_id):
     """
-    Register user with WebAuthn
+    Đăng xuất khỏi một thiết bị cụ thể.
     ---
     tags:
-        - Authentication
-        - WebAuthn
-    security:
-        - Bearer: []
-    responses:
-        200:
-            description: WebAuthn registration initiated successfully
-            schema:
-                type: object
-                properties:
-                    publicKey:
-                        type: object
-                        properties:
-                            challenge:
-                                type: string
-                            rp:
-                                type: object
-                                properties:
-                                    name:
-                                        type: string
-                                    id:
-                                        type: string
-                            user:
-                                type: object
-                                properties:
-                                    id:
-                                        type: string
-                                    name:
-                                        type: string
-                                    displayName:
-                                        type: string
-                            pubKeyCredParams:
-                                type: array
-                                items:
-                                    type: object
-                                    properties:
-                                        type:
-                                            type: string
-                                        alg:
-                                            type: integer
-                            authenticatorSelection:
-                                type: object
-                                properties:
-                                    authenticatorAttachment:
-                                        type: string
-        400:
-            description: Invalid request or user not found
-        500:
-            description: Internal server error
-    """
-    email = get_jwt_identity()
-    try:
-        conn = get_db_connection()
-        c = conn.cursor(cursor_factory=RealDictCursor)
-        c.execute('SELECT username FROM users WHERE email = %s', (email,))
-        user = c.fetchone()
-        if not user:
-            return jsonify({'message': 'User not found'}), 404
-
-        # Tạo challenge cho WebAuthn
-        registration_options = generate_registration_options(
-            rp_id="localhost",
-            rp_name="Netflix",
-            user_id=email.encode(),
-            user_name=user['username'],
-            user_display_name=user['username'],
-            attestation="none",
-            authenticator_selection={"authenticator_attachment": "platform"}
-        )
-        challenge = base64.b64encode(registration_options.challenge).decode()
-
-        # Lưu challenge tạm thời trong Redis
-        redis_client.setex(f"webauthn:{email}", 300, challenge)
-
-        response = make_response(jsonify({
-            'publicKey': {
-                'challenge': challenge,
-                'rp': {'name': 'Netflix', 'id': 'localhost'},
-                'user': {'id': email, 'name': user['username'], 'displayName': user['username']},
-                'pubKeyCredParams': [{'type': 'public-key', 'alg': -7}],
-                'authenticatorSelection': {'authenticatorAttachment': 'platform'}
-            }
-        }), 200)
-        return response
-    except Exception as e:
-        logging.error(
-            f"Error starting WebAuthn registration for {email}: {str(e)}")
-        return jsonify({'message': 'Registration failed'}), 500
-    finally:
-        conn.close()
-
-
-@auth_bp.route('/webauthn/register/verify', methods=['POST'])
-@jwt_required()
-def webauthn_register_verify():
-    """
-    Verify WebAuthn registration response
-    ---
-    tags:
-        - Authentication
-        - WebAuthn
-    security:
-        - Bearer: []
+      - Device Management
+    description: |
+      Cho phép người dùng đăng xuất khỏi một thiết bị cụ thể bằng cách xác định `device_id`.
+      Thao tác này sẽ:
+        - Xác thực người dùng qua JWT.
+        - Kiểm tra xem thiết bị có thuộc về người dùng không.
+        - Đưa `jti` của thiết bị vào danh sách blacklist (Redis).
+        - Xóa thiết bị khỏi bảng `user_devices`.
     parameters:
-        - name: body
-          in: body
-          required: true
-          schema:
-            type: object
-            properties:
-              credential:
-                type: string
-                description: JSON string of the WebAuthn credential
+      - name: device_id
+        in: path
+        type: integer
+        required: true
+        description: ID của thiết bị cần đăng xuất.
+    security:
+      - Bearer: []
     responses:
-        200:
-            description: WebAuthn registration verified successfully
-        400:
-            description: Invalid or expired challenge
-        500:
-            description: Internal server error
+      200:
+        description: Đăng xuất thiết bị thành công.
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Device logged out successfully
+      404:
+        description: Thiết bị không tồn tại hoặc không thuộc về người dùng.
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Device not found or you do not have permission
+      500:
+        description: Lỗi máy chủ khi xử lý đăng xuất.
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Failed to log out device
     """
-    email = get_jwt_identity()
-    data = request.get_json()
-    credential_response = data.get('credential')  # credential from frontend
+    user_id_from_token = get_jwt_identity()
 
-    if not credential_response:
-        return jsonify({'message': 'Missing credential data'}), 400
-
+    conn = None
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
 
-        challenge_b64 = redis_client.get(f"webauthn:{email}")
-        if not challenge_b64:
-            return jsonify({'message': 'Challenge expired or invalid'}), 400
-        challenge = base64.b64decode(challenge_b64)
-
-        # Sử dụng WebAuthn library để xác minh phản hồi đăng ký
-        verification = verify_registration_response(
-            credential=credential_response,  # Đây là đối tượng Python từ JSON
-            expected_challenge=challenge,
-            expected_origin="http://localhost:5501",  # Cần khớp với frontend của bạn
-            expected_rp_id="localhost"
+        # Lấy thông tin của thiết bị cần đăng xuất
+        c.execute(
+            "SELECT jti, device_fingerprint FROM user_devices WHERE id = %s AND user_id = %s",
+            (device_id, int(user_id_from_token))
         )
+        device_to_logout = c.fetchone()
 
-        # Lấy credential ID và public key từ đối tượng verification
-        credential_id = base64.b64encode(
-            verification.credential_id).decode('utf-8')
-        public_key = base64.b64encode(
-            verification.credential_public_key).decode('utf-8')
+        if not device_to_logout:
+            return jsonify({'message': 'Device not found or you do not have permission'}), 404
 
-        # Cập nhật database với credential_id và public_key
-        # Lưu ý: Nếu bạn muốn hỗ trợ nhiều credential, bạn sẽ cần một bảng riêng
-        # hoặc một cách phức tạp hơn để lưu trữ chúng.
-        c.execute('''
-            UPDATE users 
-            SET webauthn_credential_id = %s, 
-                webauthn_public_key = %s 
-            WHERE email = %s
-        ''', (credential_id, public_key, email))
+        # --- LOGIC SO SÁNH MỚI ---
+        # 1. Lấy fingerprint của trình duyệt đang gửi request
+        current_browser_fingerprint = get_device_fingerprint(request)
+
+        # 2. Lấy fingerprint của thiết bị sắp bị đăng xuất từ DB
+        target_fingerprint = device_to_logout['device_fingerprint']
+
+        # 3. So sánh chúng
+        is_current_device = (current_browser_fingerprint == target_fingerprint)
+        logging.info(
+            f"Logging out device. Is it the current device? {is_current_device}")
+        # --- KẾT THÚC LOGIC SO SÁNH ---
+
+        # Thực hiện việc đăng xuất như cũ
+        jti_to_blacklist = device_to_logout['jti']
+        expires = timedelta(days=30)
+        redis_client.setex(jti_to_blacklist, expires, 'blacklisted')
+
+        c.execute("DELETE FROM user_devices WHERE id = %s", (device_id,))
         conn.commit()
 
-        redis_client.delete(f"webauthn:{email}")  # Xóa challenge sau khi dùng
+        logging.info(
+            f"User {user_id_from_token} logged out device {device_id}")
 
-        logging.info(f"WebAuthn credential registered for {email}")
-        return jsonify({'message': 'WebAuthn registered successfully'}), 200
+        # Trả về kết quả kèm theo lá cờ is_current_device
+        return jsonify({
+            'message': 'Device logged out successfully',
+            'is_current_device': is_current_device  # <-- Gửi cờ này về cho frontend
+        }), 200
 
     except Exception as e:
         logging.error(
-            f"Error verifying WebAuthn registration for {email}: {str(e)}")
-        # Cung cấp thông báo lỗi chi tiết hơn nếu có thể
-        return jsonify({'message': f'Verification failed: {str(e)}'}), 500
+            f"Error logging out device {device_id} for user {user_id_from_token}: {e}")
+        return jsonify({'message': 'Failed to log out device'}), 500
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
-@auth_bp.route('/webauthn/login', methods=['POST'])
-def webauthn_login():
+@auth_bp.route('/devices/logout-all', methods=['POST'])
+@jwt_required()
+def logout_all_devices():
     """
-    Initiate WebAuthn login
+    Đăng xuất khỏi tất cả các thiết bị.
     ---
     tags:
-        - Authentication
-        - WebAuthn
-    parameters:
-        - name: body
-          in: body
-          required: true
-          schema:
-            type: object
-            properties:
-              email:
-                type: string
-                example: johndoe@example.com
+      - Device Management
+    description: |
+      Đăng xuất khỏi **tất cả các thiết bị** đã đăng nhập trước đó của người dùng hiện tại.
+      Thao tác này sẽ:
+        - Lấy tất cả `jti` (JWT ID) của người dùng từ cơ sở dữ liệu.
+        - Đưa tất cả `jti` vào danh sách blacklist (Redis), khiến token bị vô hiệu hóa.
+        - Xóa tất cả bản ghi thiết bị của người dùng khỏi bảng `user_devices`.
+        - Token hiện tại cũng sẽ bị vô hiệu hóa, vì vậy client cần đăng nhập lại.
+    security:
+      - Bearer: []
     responses:
-        200:
-            description: WebAuthn login initiated successfully
-            schema:
-                type: object
-                properties:
-                    publicKey:
-                        type: object
-                        properties:
-                            challenge:
-                                type: string
-                            rpId:
-                                type: string
-                            allowCredentials:
-                                type: array
-                                items:
-                                    type: object
-        400:
-            description: WebAuthn not registered for this user
-        500:
-            description: Internal server error
+      200:
+        description: Đăng xuất tất cả thiết bị thành công.
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Successfully logged out from all devices. You will be logged out shortly.
+      500:
+        description: Lỗi máy chủ khi xử lý đăng xuất hàng loạt.
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Failed to log out all devices
     """
-    data = request.get_json()
-    email = sanitize_input(data.get('email'))
+    user_id = get_jwt_identity()
 
     try:
         conn = get_db_connection()
         c = conn.cursor(cursor_factory=RealDictCursor)
-        # Truy xuất credential ID và public key
-        c.execute(
-            'SELECT webauthn_credential_id, webauthn_public_key FROM users WHERE email = %s AND verified = 1', (email,))
-        user = c.fetchone()
 
-        if not user or not user['webauthn_credential_id'] or not user['webauthn_public_key']:
-            return jsonify({'message': 'WebAuthn not registered for this user or user not found/verified'}), 400
+        # 1. Lấy tất cả jti của người dùng
+        c.execute("SELECT jti FROM user_devices WHERE user_id = %s", (user_id,))
+        devices = c.fetchall()
 
-        # Chuyển đổi credential ID từ base64 về bytes
-        stored_credential_id = base64.b64decode(user['webauthn_credential_id'])
+        # 2. Blacklist tất cả các jti
+        expires = timedelta(days=30)
+        pipeline = redis_client.pipeline()
+        for device in devices:
+            pipeline.setex(device['jti'], expires, 'blacklisted')
+        pipeline.execute()
 
-        # Tạo challenge cho WebAuthn login
-        authentication_options = generate_authentication_options(
-            rp_id="localhost",
-            # Truyền credential ID đã lưu
-            allow_credentials=[
-                {"id": stored_credential_id, "type": "public-key"}]
-        )
+        # 3. Xóa tất cả thiết bị của người dùng khỏi DB
+        c.execute("DELETE FROM user_devices WHERE user_id = %s", (user_id,))
+        conn.commit()
 
-        challenge = base64.b64encode(authentication_options.challenge).decode()
-        # Lưu challenge tạm thời
-        redis_client.setex(f"webauthn:{email}", 300, challenge)
+        logging.info(f"User {user_id} logged out from all devices.")
+        # Lưu ý: Hành động này cũng sẽ vô hiệu hóa token của phiên hiện tại.
+        # Frontend cần xử lý bằng cách điều hướng người dùng về trang đăng nhập.
+        return jsonify({'message': 'Successfully logged out from all devices. You will be logged out shortly.'}), 200
 
-        response_data = {
-            'publicKey': {
-                'challenge': challenge,
-                'rpId': 'localhost',
-                'allowCredentials': [
-                    {
-                        # Encode lại cho frontend
-                        'id': base64.b64encode(stored_credential_id).decode('utf-8'),
-                        'type': 'public-key',
-                        # Bao gồm các transports có thể
-                        'transports': ['internal', 'usb', 'nfc', 'ble']
-                    }
-                ],
-                'userVerification': 'preferred'  # Hoặc 'required' tùy ý
-            }
-        }
-
-        response = make_response(jsonify(response_data), 200)
-        return response
     except Exception as e:
-        logging.error(f"Error starting WebAuthn login for {email}: {str(e)}")
-        return jsonify({'message': f'Login failed: {str(e)}'}), 500
+        logging.error(f"Error logging out all devices for user {user_id}: {e}")
+        return jsonify({'message': 'Failed to log out all devices'}), 500
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
-@auth_bp.route('/webauthn/login/verify', methods=['POST'])
-def webauthn_login_verify():
-    """Handle WebAuthn login verification request
+@auth_bp.after_request
+def update_last_active(response):
+    try:
+        try:
+            verify_jwt_in_request()
+        except NoAuthorizationError:
+            return response  # Không có JWT, bỏ qua
+
+        user_id = get_jwt_identity()
+        if not user_id:
+            return response
+
+        # Cập nhật last_active như cũ
+        fingerprint = get_device_fingerprint(request)
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute(
+            "UPDATE user_devices SET last_active_at = CURRENT_TIMESTAMP WHERE user_id = %s AND device_fingerprint = %s",
+            (user_id, fingerprint)
+        )
+        conn.commit()
+    except Exception as e:
+        logging.warning(f"Could not update last_active: {e}")
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+    return response
+
+
+@auth_bp.route('/test-captcha', methods=['POST'])
+def test_captcha():
+    """
+    Kiểm tra xác thực reCAPTCHA từ phía client.
+
+    Nhận một JSON object từ request chứa trường 'recaptcha_response',
+    sau đó gọi hàm verify_recaptcha để kiểm tra tính hợp lệ của token.
+
     Returns:
-    - 200: Login successful
-    - 400: Invalid request
-    - 401: Authentication failed
+        Response: JSON chứa kết quả xác thực với khóa 'verified' là True hoặc False.
+                  Nếu thiếu trường 'recaptcha_response', trả về mã lỗi 400.
     """
     data = request.get_json()
-    email = sanitize_input(data.get('email'))
-    credential_response = data.get('credential')  # response from frontend
+    if not data or 'recaptcha_response' not in data:
+        return jsonify({"message": "Missing recaptcha_response"}), 400
 
-    if not credential_response:
-        return jsonify({'message': 'Missing credential data'}), 400
+    token = data['recaptcha_response']
 
-    try:
-        conn = get_db_connection()
-        c = conn.cursor(cursor_factory=RealDictCursor)
-        # Truy xuất credential ID và public key đã lưu
+    logging.info(f"--- BẮT ĐẦU TEST CAPTCHA ---")
+    logging.info(f"Nhận được token trong /test-captcha: ...{token[-6:]}")
+
+    is_verified = verify_recaptcha(token)
+
+    logging.info(f"--- KẾT THÚC TEST CAPTCHA ---")
+
+    return jsonify({"verified": is_verified})
+
+# --- BẮT ĐẦU LOGIC MỚI CHO SOCIAL LOGIN ---
+
+# Hàm trợ giúp để tìm hoặc tạo người dùng từ thông tin OAuth
+
+
+def find_or_create_oauth_user(email, name, provider, oauth_id):
+    conn = get_db_connection()
+    c = conn.cursor(cursor_factory=RealDictCursor)
+
+    # Tìm người dùng bằng provider và oauth_id trước
+    c.execute("SELECT * FROM users WHERE oauth_provider = %s AND oauth_id = %s",
+              (provider, oauth_id))
+    user = c.fetchone()
+    if user:
+        conn.close()
+        return user
+
+    # Nếu không tìm thấy, kiểm tra xem có ai đã đăng ký bằng email này chưa
+    c.execute("SELECT * FROM users WHERE email = %s", (email,))
+    user = c.fetchone()
+    if user:
+        # Nếu có, liên kết tài khoản này với OAuth
         c.execute(
-            'SELECT webauthn_credential_id, webauthn_public_key, role FROM users WHERE email = %s AND verified = 1', (email,))
+            "UPDATE users SET oauth_provider = %s, oauth_id = %s WHERE email = %s",
+            (provider, oauth_id, email)
+        )
+    else:
+        # Nếu chưa có, tạo người dùng mới
+        c.execute(
+            """
+            INSERT INTO users (username, email, role, verified, oauth_provider, oauth_id)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+            """,
+            (name, email, 'user', True, provider, oauth_id)
+        )
         user = c.fetchone()
 
-        if not user or not user['webauthn_credential_id'] or not user['webauthn_public_key']:
-            return jsonify({'message': 'WebAuthn not registered or user not found/verified'}), 400
+    conn.commit()
+    conn.close()
+    return user
 
-        challenge_b64 = redis_client.get(f"webauthn:{email}")
-        if not challenge_b64:
-            return jsonify({'message': 'Challenge expired or invalid'}), 400
-        challenge = base64.b64decode(challenge_b64)
+# ----- GOOGLE LOGIN -----
 
-        # Chuyển đổi public key từ base64 về bytes
-        stored_public_key_bytes = base64.b64decode(user['webauthn_public_key'])
+# Thay thế toàn bộ hàm login_google bằng phiên bản này
 
-        verification = verify_authentication_response(
-            credential=credential_response,  # Đối tượng Python từ JSON
-            expected_challenge=challenge,
-            expected_origin="http://localhost:5501",  # Cần khớp với frontend của bạn
-            expected_rp_id="localhost",
-            credential_public_key=stored_public_key_bytes  # Truyền public key đã lưu
-        )
 
-        redis_client.delete(f"webauthn:{email}")  # Xóa challenge sau khi dùng
+@auth_bp.route('/login/google')
+def login_google():
+    """
+    Bắt đầu quá trình đăng nhập bằng Google OAuth 2.0.
 
-        access_token = create_access_token(
-            identity=email, additional_claims={'role': user['role']})
-        refresh_token = create_refresh_token(identity=email)
-        csrf_token = generate_csrf_token()
+    - Tạo luồng OAuth bằng thông tin cấu hình từ Google.
+    - Sinh URL ủy quyền và chuyển hướng người dùng tới trang đăng nhập của Google.
+    - Lưu trữ `state` trong Redis để xác thực CSRF sau này.
 
-        response = make_response(jsonify({
-            'message': 'Login successful',
-            'access_token': access_token,
-            'refresh_token': refresh_token,
-            'csrf_token': csrf_token,
-            'role': user['role'],
-            'email': email
-        }), 200)
+    Trả về:
+        redirect: Đến URL xác thực của Google.
+    """
+    client_config = {
+        "web": {
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    }
 
-        # Cân nhắc việc truyền token qua JSON response thay vì cookie nếu frontend của bạn xử lý localStorage
-        # response.set_cookie('access_token', access_token, httponly=True, secure=True, samesite='Strict', max_age=1800)
-        # response.set_cookie('refresh_token', refresh_token, httponly=True, secure=True, samesite='Strict', max_age=604800)
-        # set_csrf_cookie(response, csrf_token) # Nếu bạn vẫn muốn set CSRF cookie
+    # SỬA LỖI: Sử dụng phương thức khởi tạo đúng là from_client_config
+    flow = Flow.from_client_config(
+        client_config=client_config,
+        scopes=['openid', 'https://www.googleapis.com/auth/userinfo.email',
+                'https://www.googleapis.com/auth/userinfo.profile']
+    )
 
-        logging.info(f"User {email} logged in via WebAuthn")
-        return response
+    # Đặt redirect_uri như một thuộc tính riêng
+    flow.redirect_uri = 'http://127.0.0.1:8000/api/auth/callback/google'
+
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true'
+    )
+
+    redis_client.setex(f"oauth_state:{state}", 300, 1)
+
+    return redirect(authorization_url)
+
+# Thay thế toàn bộ hàm callback_google bằng phiên bản này
+
+
+@auth_bp.route('/callback/google')
+def callback_google():
+    """
+    Xử lý phản hồi từ Google sau khi người dùng xác thực.
+
+    - Xác minh `state` từ Redis để đảm bảo tính hợp lệ.
+    - Hoán đổi mã xác thực (authorization code) để lấy access token và ID token.
+    - Xác minh ID token và trích xuất thông tin người dùng từ Google.
+    - Tìm hoặc tạo tài khoản người dùng trong hệ thống.
+    - Sinh JWT access và refresh token cho người dùng.
+    - Chuyển hướng người dùng về frontend với token đính kèm trong query string.
+
+    Trả về:
+        redirect: Tới frontend với access_token và refresh_token.
+    """
+    state = request.args.get('state')
+    if not redis_client.get(f"oauth_state:{state}"):
+        return jsonify({'message': 'Invalid state parameter'}), 400
+    redis_client.delete(f"oauth_state:{state}")
+
+    client_config = {
+        "web": {
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "token_uri": "https://oauth2.googleapis.com/token",
+            # Thêm lại để đảm bảo tính đầy đủ
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        }
+    }
+
+    # SỬA LỖI: Sử dụng phương thức khởi tạo đúng là from_client_config
+    flow = Flow.from_client_config(
+        client_config=client_config,
+        scopes=['openid', 'https://www.googleapis.com/auth/userinfo.email',
+                'https://www.googleapis.com/auth/userinfo.profile']
+    )
+
+    # Đặt redirect_uri như một thuộc tính riêng
+    flow.redirect_uri = 'http://127.0.0.1:8000/api/auth/callback/google'
+
+    # Đổi authorization code lấy access token
+    try:
+        flow.fetch_token(authorization_response=request.url)
     except Exception as e:
-        logging.error(f"Error verifying WebAuthn login for {email}: {str(e)}")
-        return jsonify({'message': f'Verification failed: {str(e)}'}), 500
-    finally:
-        conn.close()
+        logging.error(f"Failed to fetch Google token: {e}")
+        return jsonify({'message': 'Failed to fetch token from Google'}), 400
 
+    credentials = flow.credentials
 
-@jwt.token_in_blocklist_loader
-def check_if_token_revoked(jwt_header, jwt_payload):
-    jti = jwt_payload['jti']
-    token = redis_client.get(jti)
-    return token is not None
+    # Lấy thông tin người dùng
+    try:
+        user_info = id_token.verify_oauth2_token(
+            id_token=credentials.id_token,
+            request=google_requests.Request(),
+            audience=os.getenv("GOOGLE_CLIENT_ID")
+        )
+    except ValueError as e:
+        logging.error(f"Google ID token verification failed: {e}")
+        return jsonify({'message': 'Invalid Google token'}), 400
+
+    email = user_info['email']
+    name = user_info.get('name', email.split('@')[0])
+    google_id = user_info['sub']
+
+    # Tìm hoặc tạo người dùng
+    user = find_or_create_oauth_user(email, name, 'google', google_id)
+
+    # Tạo JWT của bạn và chuyển hướng về frontend
+    access_token = create_access_token(identity=str(
+        user['id']), additional_claims={'role': user['role']})
+    refresh_token = create_refresh_token(identity=str(user['id']))
+
+    # Chuyển hướng về trang chính với token
+    redirect_url = f'http://127.0.0.1:5501/frontend/main.html?access_token={access_token}&refresh_token={refresh_token}'
+    return redirect(redirect_url)

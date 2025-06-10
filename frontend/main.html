@@ -669,6 +669,117 @@
     color: var(--netflix-red);
     margin-top: 10px;
 }
+.device-modal-content {
+    background-color: var(--netflix-dark);
+    color: #e5e5e5;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+    width: 90%;
+    max-width: 700px;
+    border: 1px solid #333;
+}
+
+.device-modal-content h2 {
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+    color: #fff;
+}
+
+.device-modal-description {
+    font-size: 14px;
+    color: var(--netflix-gray);
+    margin-bottom: 20px;
+}
+
+.btn-danger {
+    background-color: var(--netflix-red);
+    color: #fff;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+    width: 100%;
+    margin-bottom: 25px;
+}
+
+.btn-danger:hover {
+    background-color: #c40812;
+}
+
+.device-list {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px; /* For scrollbar spacing */
+}
+
+/* Custom scrollbar for device list */
+.device-list::-webkit-scrollbar {
+    width: 8px;
+}
+.device-list::-webkit-scrollbar-track {
+    background: #222;
+    border-radius: 4px;
+}
+.device-list::-webkit-scrollbar-thumb {
+    background-color: #555;
+    border-radius: 4px;
+}
+.device-list::-webkit-scrollbar-thumb:hover {
+    background-color: var(--netflix-gray);
+}
+
+.device-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 0;
+    border-bottom: 1px solid #333;
+}
+
+.device-item:last-child {
+    border-bottom: none;
+}
+
+.device-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.device-icon {
+    font-size: 2.5rem;
+}
+
+.device-details h3 {
+    font-size: 16px;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.device-details p {
+    font-size: 13px;
+    color: var(--netflix-gray);
+}
+
+.logout-device-btn {
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid var(--netflix-gray);
+    color: var(--netflix-gray);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+.logout-device-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-color: #fff;
+}
     </style>
 </head>
 <body>
@@ -700,6 +811,7 @@
                     <a href="#" id="enable-2fa">Kích hoạt 2FA</a>
                     <a href="#">Tài khoản</a>
                     <a href="#">Trung tâm trợ giúp</a>
+                    <a href="#" id="manage-devices">Quản lý thiết bị</a>
                     <a href="#" id="logout">Đăng xuất</a>
                 </div>
             </div>
@@ -805,7 +917,19 @@
             <p id="2fa-message" style="color: red;"></p>
         </div>
     </div>
-
+    <div id="device-management-modal" class="modal">
+        <div class="modal-content device-modal-content">
+            <span class="close" id="close-devices-modal">×</span>
+            <h2>Quản lý các thiết bị đã đăng nhập</h2>
+            <p class="device-modal-description">Đây là danh sách các thiết bị đã đăng nhập vào tài khoản của bạn. Bạn có thể đăng xuất khỏi các thiết bị không nhận ra.</p>
+            
+            <button id="logout-all-devices-btn" class="btn btn-danger">Đăng xuất khỏi tất cả thiết bị</button>
+            
+            <div class="device-list" id="device-list-container">
+                <p>Đang tải danh sách thiết bị...</p>
+            </div>
+        </div>
+    </div>
     <footer class="footer">
         <div class="footer-links">
             <a href="#" class="footer-link">Câu hỏi thường gặp</a>
@@ -818,448 +942,323 @@
         </div>
     </footer>
 
-    <script type="module">
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- AXIOS INTERCEPTOR CONFIGURATION ---
+            const api = axios.create({
+                baseURL: 'http://127.0.0.1:8000/api',
+                withCredentials: true
+            });
 
-        let userRole = 'user'; // Mặc định
-        const modal2FA = document.getElementById('modal-2fa');
-        const twoFAMessage = document.getElementById('2fa-message');
-
-        // Function to get CSRF token from cookies
-        function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
-            return null;
-        }
-
-        // Function to fetch and update CSRF token in localStorage
-        async function fetchCsrfToken() {
-            try {
-                const response = await axios.get('http://127.0.0.1:8000/api/auth/get-csrf-token', { withCredentials: true });
-                const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrf_token=')).split('=')[1];
-                localStorage.setItem('csrf_token', csrfToken);
-                return csrfToken;
-            } catch (error) {
-                console.error('Error fetching CSRF token:', error);
-                return null;
-            }
-        }
-
-        // Helper function to ensure CSRF token is available
-        async function checkCsrfToken() {
-            let csrfToken = localStorage.getItem('csrf_token');
-            if (!csrfToken) {
-                csrfToken = await fetchCsrfToken();
-            }
-            if (!csrfToken) {
-                alert('Không thể lấy CSRF token. Vui lòng thử lại.');
-                return false;
-            }
-            return true;
-        }
-
-        async function checkSession() {
-            console.log('Checking session...');
+            api.interceptors.request.use(config => {
+                const token = localStorage.getItem('access_token');
+                const csrfToken = localStorage.getItem('csrf_token');
             
-            const token = localStorage.getItem('access_token');
-            console.log('Access token available:', token ? 'Yes' : 'No');
-            
-            if (!token) {
-                console.log('No access token found');
-                redirectToLogin();
-                return;
-            }
-
-            try {
-                const response = await axios.get('http://127.0.0.1:8000/api/auth/check_session', {
-                    withCredentials: true,
-                    headers: { 
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                console.log('Session check response:', response.data);
-                
-                userRole = response.data.role || 'user';
-                console.log('User role:', userRole);
-                
-                // Load content based on role
-                await loadContentByRole(token);
-                
-                // Update UI based on role
-                updateUIForRole();
-            } catch (error) {
-                console.error('Session check error:', error);
-                if (error.response?.status === 401) {
-                    console.log('Token expired, redirecting to login...');
-                    redirectToLogin();
+                if (token) {
+                    config.headers['Authorization'] = `Bearer ${token}`;
                 }
-            }
-        }
+                if (csrfToken && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(config.method.toUpperCase())) {
+                    config.headers['X-CSRF-Token'] = csrfToken;
+                }
+                return config;
+            }, error => {
+                return Promise.reject(error);
+            });
 
-        function redirectToLogin() {
-            console.log('Redirecting to login page');
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
-            localStorage.removeItem('csrf_token');
-            localStorage.removeItem('userRole');
-            window.location.href = './index.html';
-        }
-
-        function updateUIForRole() {
-            console.log('Updating UI for role:', userRole);
+            // --- DOM ELEMENT SELECTORS ---
+            const header = document.querySelector('.header');
+            const searchIcon = document.querySelector('.search-icon');
+            const searchInput = document.querySelector('.search-input');
+            const logoutBtn = document.getElementById('logout');
+            const enable2FABtn = document.getElementById('enable-2fa');
+            const modal2FA = document.getElementById('modal-2fa');
+            const close2FAModalBtn = document.querySelector('.close-2fa');
+            const qrCodeImg = document.getElementById('qrcode');
+            const secretCodeSpan = document.getElementById('2fa-secret');
+            const verify2FACodeInput = document.getElementById('2fa-code');
+            const verify2FABtn = document.getElementById('verify-2fa');
+            const twoFAMessage = document.getElementById('2fa-message');
+            const deviceModal = document.getElementById('device-management-modal');
+            const openDeviceModalBtn = document.getElementById('manage-devices');
+            const closeDeviceModalBtn = document.getElementById('close-devices-modal');
+            const deviceListContainer = document.getElementById('device-list-container');
+            const logoutAllBtn = document.getElementById('logout-all-devices-btn');
+            const videoModal = document.getElementById('videoModal');
+            const videoPlayer = document.getElementById('videoPlayer');
+            const videoSource = document.getElementById('videoSource');
+            const videoTitle = document.getElementById('video-title');
+            const closeVideoModalBtn = document.querySelector('.close');
+            const progressContainer = document.querySelector('.progress-container');
+            const playFeaturedBtn = document.getElementById('play-featured');
             const adminPanel = document.getElementById('admin-panel');
             const productionPanel = document.getElementById('production-panel');
             const popularSection = document.getElementById('popular-section');
             const trendingSection = document.getElementById('trending-section');
             const rewatchSection = document.getElementById('rewatch-section');
 
-            if (adminPanel && productionPanel && popularSection && trendingSection && rewatchSection) {
-                if (userRole === 'admin') {
-                    console.log('Showing admin panel');
-                    adminPanel.style.display = 'block';
-                    popularSection.style.display = 'none';
-                    trendingSection.style.display = 'none';
-                    rewatchSection.style.display = 'none';
-                    productionPanel.style.display = 'none';
-                } else if (userRole === 'production') {
-                    console.log('Showing production panel');
-                    productionPanel.style.display = 'block';
-                    popularSection.style.display = 'block';
-                    trendingSection.style.display = 'block';
-                    rewatchSection.style.display = 'block';
-                    adminPanel.style.display = 'none';
-                } else {
-                    console.log('Showing user content');
-                    popularSection.style.display = 'block';
-                    trendingSection.style.display = 'block';
-                    rewatchSection.style.display = 'block';
-                    adminPanel.style.display = 'none';
-                    productionPanel.style.display = 'none';
+            let userRole = 'user';
+
+            // --- MAIN INITIALIZATION ---
+            async function initializePage() {
+                const params = new URLSearchParams(window.location.search);
+                const accessToken = params.get('access_token');
+                const refreshTokenFromUrl = params.get('refresh_token');
+
+                if (accessToken && refreshTokenFromUrl) {
+                    localStorage.setItem('access_token', accessToken);
+                    localStorage.setItem('refresh_token', refreshTokenFromUrl);
+                    window.history.replaceState({}, document.title, window.location.pathname);
                 }
-            } else {
-                console.warn('One or more section elements not found:', {
-                    adminPanel: !!adminPanel,
-                    productionPanel: !!productionPanel,
-                    popularSection: !!popularSection,
-                    trendingSection: !!trendingSection,
-                    rewatchSection: !!rewatchSection
-                });
+                
+                try {
+                    const response = await api.get('/auth/get-csrf-token');
+                    const csrfCookie = document.cookie.split('; ').find(row => row.startsWith('csrf_token='));
+                    if (csrfCookie) {
+                        localStorage.setItem('csrf_token', csrfCookie.split('=')[1]);
+                    }
+                } catch (error) {
+                    console.error("Không thể lấy CSRF token khi khởi tạo trang:", error);
+                }
+
+                await checkSessionAndInitializeUI();
             }
-        }
 
-        async function loadContentByRole(token) {
-            try {
-                console.log('Loading content for role:', userRole);
-                console.log('Using token:', token);
-                
-                // Lấy danh sách video từ API
-                const response = await axios.get('http://localhost:8000/api/auth/api/content', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                console.log('Content API response:', response.data);
-                
-                const { role, content } = response.data;
-                console.log('Received content:', content);
+            // --- CORE FUNCTIONS ---
+            async function checkSessionAndInitializeUI() {
+                if (!localStorage.getItem('access_token')) {
+                    redirectToLogin();
+                    return;
+                }
 
-                if (role === 'admin') {
-                    // Hiển thị danh sách user cho admin
-                    const userList = document.getElementById('user-list');
-                    if (userList) {
-                        console.log('Rendering admin user list');
-                        userList.innerHTML = content.map(user => `
-                            <tr>
-                                <td>${escapeHTML(user.email)}</td>
-                                <td>${escapeHTML(user.username)}</td>
-                                <td>${escapeHTML(user.role)}</td>
-                                <td>${user.verified ? 'Có' : 'Không'}</td>
-                            </tr>
-                        `).join('');
+                try {
+                    const response = await api.get('/auth/check_session');
+                    const userData = response.data;
+                    userRole = userData.role || 'user';
+
+                    if (enable2FABtn) {
+                        enable2FABtn.style.display = userData.totp_secret === true ? 'none' : 'block';
                     }
-                } else {
-                    // Hiển thị video cho user thường
-                    console.log('Rendering video content for user');
-                    
-                    // Hiển thị video trong các section tương ứng
-                    const popularVideos = document.getElementById('popular-videos');
-                    const trendingVideos = document.getElementById('trending-videos');
-                    const rewatchVideos = document.getElementById('rewatch-videos');
-
-                    // Render video vào từng section
-                    if (popularVideos) {
-                        console.log('Rendering popular videos');
-                        popularVideos.innerHTML = content.map(video => `
-                            <div class="thumbnail" data-video-id="${video.id}" data-video-filename="${escapeHTML(video.video_url)}">
-                                <img src="${escapeHTML(video.thumbnail_url)}" alt="${escapeHTML(video.title)}" 
-                                     onerror="this.src='https://via.placeholder.com/300x169?text=Video+Thumbnail'">
-                                <div class="thumbnail-overlay">
-                                    <div class="thumbnail-title">${escapeHTML(video.title)}</div>
-                                    <div class="thumbnail-actions">
-                                        <div class="thumbnail-icon play-icon">▶</div>
-                                        <div class="thumbnail-icon add-icon">+</div>
-                                        <div class="thumbnail-icon like-icon">👍</div>
-                                    </div>
-                                </div>
-                            </div>
-                        `).join('');
+                    updateInterfaceByRole();
+                    loadContentByRole();
+                } catch (error) {
+                    if (error.response?.status === 401) {
+                        const refreshed = await refreshToken();
+                        if (refreshed) {
+                            window.location.reload();
+                        } else {
+                            redirectToLogin();
+                        }
+                    } else {
+                        redirectToLogin();
                     }
+                }
+            }
 
-                    if (trendingVideos) {
-                        console.log('Rendering trending videos');
-                        trendingVideos.innerHTML = content.map(video => `
-                            <div class="thumbnail" data-video-id="${video.id}" data-video-filename="${escapeHTML(video.video_url)}">
-                                <img src="${escapeHTML(video.thumbnail_url)}" alt="${escapeHTML(video.title)}"
-                                     onerror="this.src='https://via.placeholder.com/300x169?text=Video+Thumbnail'">
-                                <div class="thumbnail-overlay">
-                                    <div class="thumbnail-title">${escapeHTML(video.title)}</div>
-                                    <div class="thumbnail-actions">
-                                        <div class="thumbnail-icon play-icon">▶</div>
-                                        <div class="thumbnail-icon add-icon">+</div>
-                                        <div class="thumbnail-icon like-icon">👍</div>
-                                    </div>
-                                </div>
-                            </div>
-                        `).join('');
-                    }
-
-                    if (rewatchVideos) {
-                        console.log('Rendering rewatch videos');
-                        rewatchVideos.innerHTML = content.map(video => `
-                            <div class="thumbnail" data-video-id="${video.id}" data-video-filename="${escapeHTML(video.video_url)}">
-                                <img src="${escapeHTML(video.thumbnail_url)}" alt="${escapeHTML(video.title)}"
-                                     onerror="this.src='https://via.placeholder.com/300x169?text=Video+Thumbnail'">
-                                <div class="thumbnail-overlay">
-                                    <div class="thumbnail-title">${escapeHTML(video.title)}</div>
-                                    <div class="thumbnail-actions">
-                                        <div class="thumbnail-icon play-icon">▶</div>
-                                        <div class="thumbnail-icon add-icon">+</div>
-                                        <div class="thumbnail-icon like-icon">👍</div>
-                                    </div>
-                                </div>
-                            </div>
-                        `).join('');
-                    }
-
-                    // Cập nhật hero banner với video đầu tiên
-                    const firstVideo = content[0];
-                    if (firstVideo) {
-                        const heroTitle = document.getElementById('hero-title');
-                        const heroDescription = document.getElementById('hero-description');
-                        const playFeatured = document.getElementById('play-featured');
-                        
-                        if (heroTitle) heroTitle.textContent = firstVideo.title;
-                        if (heroDescription) heroDescription.textContent = firstVideo.description || '';
-                        if (playFeatured) {
-                            playFeatured.setAttribute('data-video-id', firstVideo.id);
-                            playFeatured.setAttribute('data-video-filename', firstVideo.video_url);
+            async function refreshToken() {
+                const refreshToken = localStorage.getItem('refresh_token');
+                if (!refreshToken) return false;
+                try {
+                    const response = await api.post('/auth/refresh', {}, {
+                        headers: { Authorization: `Bearer ${refreshToken}` }
+                    });
+                    localStorage.setItem('access_token', response.data.access_token);
+                    if (response.headers['set-cookie']) {
+                        const csrfCookie = document.cookie.split('; ').find(row => row.startsWith('csrf_token='));
+                        if (csrfCookie) {
+                            localStorage.setItem('csrf_token', csrfCookie.split('=')[1]);
                         }
                     }
+                    return true;
+                } catch (error) {
+                    return false;
                 }
-            } catch (error) {
-                console.error('Error loading content:', error);
-                console.error('Error details:', error.response?.data);
-                alert('Lỗi khi tải nội dung: ' + (error.response?.data?.message || error.message));
             }
-        }
 
-        const enable2FAButton = document.getElementById('enable-2fa');
-        if (enable2FAButton) {
-            enable2FAButton.addEventListener('click', async () => {
-                if (!(await checkCsrfToken())) return;
-
-                const token = localStorage.getItem('access_token');
-                if (!token) {
-                    twoFAMessage.textContent = 'Vui lòng đăng nhập để kích hoạt 2FA.';
-                    return;
-                }
-
-                try {
-                    console.log('Sending request to enable 2FA...');
-                    const response = await fetch('http://127.0.0.1:8000/api/auth/enable-2fa', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Authorization: `Bearer ${token}`,
-                            'X-CSRF-Token': localStorage.getItem('csrf_token'), // Use localStorage for CSRF
-                        },
-                        credentials: 'include'
-                    });
-
-                    const data = await response.json();
-                    console.log('2FA enable response:', data);
-
-                    if (!response.ok) {
-                        throw new Error(data.message || 'Không thể kích hoạt 2FA.');
-                    }
-
-                    if (data.qr_code && data.secret) {
-                        document.getElementById('qrcode').src = data.qr_code;
-                        document.getElementById('2fa-secret').textContent = data.secret;
-                        modal2FA.style.display = 'flex';
-                        twoFAMessage.textContent = '';
-                        enable2FAButton.style.display = 'none'; // Hide the enable button after generating QR
-                    } else {
-                        throw new Error('Invalid response format');
-                    }
-                } catch (error) {
-                    console.error('2FA enable error:', error);
-                    twoFAMessage.textContent = escapeHTML(error.message || 'Lỗi khi kích hoạt 2FA.');
-                }
-            });
-        }
-
-        const verify2FAButton = document.getElementById('verify-2fa');
-        if (verify2FAButton) {
-            verify2FAButton.addEventListener('click', async () => {
-                if (!(await checkCsrfToken())) return;
-
-                const token = localStorage.getItem('access_token');
-                if (!token) {
-                    twoFAMessage.textContent = 'Vui lòng đăng nhập để xác nhận 2FA.';
-                    return;
-                }
-
-                const otpCode = document.getElementById('2fa-code').value;
-                if (!otpCode) {
-                    twoFAMessage.textContent = 'Vui lòng nhập mã 2FA.';
-                    return;
-                }
-
-                try {
-                    console.log('Sending request to verify 2FA...');
-                    const response = await fetch('http://127.0.0.1:8000/api/auth/verify-2fa', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': localStorage.getItem('csrf_token'),
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ otp_code: otpCode }),
-                        credentials: 'include'
-                    });
-
-                    const data = await response.json();
-                    console.log('2FA verify response:', data);
-
-                    if (!response.ok) {
-                        throw new Error(data.message || 'Mã 2FA không hợp lệ.');
-                    }
-
-                    alert('Xác nhận 2FA thành công!');
-                    modal2FA.style.display = 'none';
-                    // Optionally, reload session to update user data (e.g., totp_secret status)
-                    checkSession(); 
-                } catch (error) {
-                    console.error('2FA verification error:', error);
-                    twoFAMessage.textContent = escapeHTML(error.message || 'Lỗi khi xác nhận 2FA.');
-                }
-            });
-        }
-
-        document.querySelector('.close-2fa').addEventListener('click', () => {
-            document.getElementById('modal-2fa').style.display = 'none';
-            twoFAMessage.textContent = ''; // Clear message on close
-        });
-
-        document.getElementById('logout').addEventListener('click', async (e) => {
-            e.preventDefault();
-            const token = localStorage.getItem('access_token'); // Get token for logout request
-            try {
-                await axios.post('http://localhost:8000/api/auth/logout', {}, { // Corrected endpoint for logout
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-            } catch (error) {
-                console.error('Error logging out:', error);
-            } finally {
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('refresh_token');
-                localStorage.removeItem('csrf_token');
-                localStorage.removeItem('userRole');
+            function redirectToLogin() {
+                localStorage.clear();
                 window.location.href = './index.html';
             }
-        });
 
-        window.addEventListener('scroll', () => {
-            const header = document.querySelector('.header');
-            if (window.scrollY > 50) {
-                header.classList.add('scrolled');
-            } else {
-                header.classList.remove('scrolled');
-            }
-        });
-
-        const searchIcon = document.querySelector('.search-icon');
-        const searchInput = document.querySelector('.search-input');
-        searchIcon.addEventListener('click', () => {
-            searchInput.classList.toggle('active');
-            if (searchInput.classList.contains('active')) {
-                searchInput.focus();
-            }
-        });
-
-    const openVideo = (videoId) => {
-        window.open(`video.html?id=${videoId}`, '_blank');
-    };
-
-        // Sửa event listener cho nút Play trong hero banner
-        const playFeatured = document.getElementById('play-featured');
-        if (playFeatured) {
-            playFeatured.addEventListener('click', () => {
-                const videoId = playFeatured.getAttribute('data-video-id');
-                const title = document.getElementById('hero-title').textContent;
-                const description = document.getElementById('hero-description').textContent;
-                openVideo(videoId, title, description);
-            });
-        }
-
-        // Sửa event listener cho thumbnail click
-        document.addEventListener('click', (e) => {
-            const thumbnail = e.target.closest('.thumbnail');
-            if (thumbnail) {
-                const videoId = thumbnail.getAttribute('data-video-id');
-                const title = thumbnail.querySelector('.thumbnail-title').textContent;
-                openVideo(videoId, title);
-            }
-        });
-
-        // Function to escape HTML to prevent XSS
-        function escapeHTML(str) {
-            const div = document.createElement('div');
-            div.appendChild(document.createTextNode(str));
-            return div.innerHTML;
-        }
-
-        // Initialize session and fetch CSRF token on page load
-        document.addEventListener('DOMContentLoaded', async () => {
-            const params = new URLSearchParams(window.location.search);
-            const accessToken = params.get('access_token');
-            const refreshToken = params.get('refresh_token');
-
-            if (accessToken && refreshToken) {
-                localStorage.setItem('access_token', accessToken);
-                localStorage.setItem('refresh_token', refreshToken);
-                window.history.replaceState({}, document.title, window.location.pathname);
-            }
-            await fetchCsrfToken(); // Fetch CSRF token on page load
-            checkSession();
-        });
-
-        // Thêm hàm xóa video cho production
-        window.deleteVideo = async (videoId) => {
-            if (!confirm('Bạn có chắc muốn xóa video này?')) return;
-            
-            try {
-                const token = localStorage.getItem('access_token');
-                await axios.delete(`http://localhost:8000/api/videos/${videoId}`, {
-                    headers: { Authorization: `Bearer ${token}`, Range: `bytes=0-` }
+            function updateInterfaceByRole() {
+                [adminPanel, productionPanel, popularSection, trendingSection, rewatchSection].forEach(el => {
+                    if (el) el.style.display = 'none';
                 });
-                alert('Xóa video thành công');
-                checkSession(); // Reload danh sách
-            } catch (error) {
-                console.error('Lỗi khi xóa video:', error);
-                alert('Lỗi khi xóa video: ' + (error.response?.data?.message || error.message));
+
+                if (userRole === 'admin') {
+                    if (adminPanel) adminPanel.style.display = 'block';
+                } else if (userRole === 'production') {
+                    if (productionPanel) productionPanel.style.display = 'block';
+                    if (popularSection) popularSection.style.display = 'block';
+                    if (trendingSection) trendingSection.style.display = 'block';
+                    if (rewatchSection) rewatchSection.style.display = 'block';
+                } else {
+                    if (popularSection) popularSection.style.display = 'block';
+                    if (trendingSection) trendingSection.style.display = 'block';
+                    if (rewatchSection) rewatchSection.style.display = 'block';
+                }
             }
-        };
+
+            async function loadContentByRole() {
+                try {
+                    const response = await api.get('/auth/api/content');
+                    const content = response.data.content;
+
+                    if (userRole === 'admin') {
+                        const userList = document.getElementById('user-list');
+                        if (userList) {
+                            userList.innerHTML = content.map(user => `
+                                <tr>
+                                    <td>${escapeHTML(user.email)}</td>
+                                    <td>${escapeHTML(user.username)}</td>
+                                    <td>${escapeHTML(user.role)}</td>
+                                    <td>${user.verified ? '✓' : '✗'}</td>
+                                </tr>
+                            `).join('');
+                        }
+                    } else if (userRole === 'production') {
+                        const videoList = document.getElementById('video-list');
+                        if (videoList) {
+                            videoList.innerHTML = content.map(video => `
+                                <tr>
+                                    <td>${escapeHTML(video.title)}</td>
+                                    <td>${escapeHTML(video.category)}</td>
+                                    <td><button onclick="editVideo(${video.id})">Sửa</button></td>
+                                </tr>
+                            `).join('');
+                        }
+                    } else {
+                        loadVideos('popular', 'popular-videos');
+                        loadVideos('trending', 'trending-videos');
+                        loadVideos('rewatch', 'rewatch-videos');
+                    }
+                } catch (error) {
+                    console.error('Error loading content:', error);
+                }
+            }
+
+            async function loadVideos(category, elementId) {
+                try {
+                    const response = await api.get(`/videos?category=${category}&limit=6`);
+                    const container = document.getElementById(elementId);
+                    if (container) {
+                        container.innerHTML = response.data.videos.map(video => `
+                            <div class="thumbnail" data-video-id="${video.id}" data-video-url="${escapeHTML(video.video_url)}" data-title="${escapeHTML(video.title)}">
+                                <img src="${escapeHTML(video.thumbnail_url)}" alt="${escapeHTML(video.title)}">
+                                <div class="thumbnail-overlay">
+                                    <div class="thumbnail-title">${escapeHTML(video.title)}</div>
+                                    <div class="thumbnail-actions">
+                                        <div class="thumbnail-icon play-icon">▶</div>
+                                        <div class="thumbnail-icon add-icon">+</div>
+                                        <div class="thumbnail-icon like-icon">👍</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                } catch (error) {
+                    console.error(`Error loading ${category} videos:`, error);
+                }
+            }
+
+            function escapeHTML(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            // --- EVENT HANDLERS ---
+            enable2FABtn?.addEventListener('click', async () => {
+                try {
+                    const response = await api.post('/auth/enable-2fa');
+                    qrCodeImg.src = response.data.qr_code;
+                    secretCodeSpan.textContent = response.data.secret;
+                    modal2FA.style.display = 'flex';
+                } catch (error) {
+                    alert('Lỗi khi kích hoạt 2FA: ' + (error.response?.data?.message || error.message));
+                }
+            });
+
+            verify2FABtn?.addEventListener('click', async () => {
+                const code = verify2FACodeInput.value;
+                if (!code) {
+                    twoFAMessage.textContent = 'Vui lòng nhập mã.';
+                    return;
+                }
+                try {
+                    await api.post('/auth/verify-2fa', { totp_code: code });
+                    alert('2FA đã được kích hoạt thành công!');
+                    modal2FA.style.display = 'none';
+                    checkSessionAndInitializeUI();
+                } catch (error) {
+                    twoFAMessage.textContent = error.response?.data?.message || 'Mã không hợp lệ.';
+                }
+            });
+
+            logoutBtn?.addEventListener('click', async (e) => {
+                e.preventDefault();
+                try {
+                    await api.post('/auth/logout');
+                } catch (error) {
+                    console.error('Logout request failed:', error);
+                } finally {
+                    redirectToLogin();
+                }
+            });
+
+            // --- Initialize page ---
+            initializePage();
+
+            // --- Other event listeners ---
+            window.addEventListener('scroll', () => {
+                header.classList.toggle('scrolled', window.scrollY > 50);
+            });
+
+            searchIcon?.addEventListener('click', () => {
+                searchInput.classList.toggle('active');
+                if (searchInput.classList.contains('active')) {
+                    searchInput.focus();
+                }
+            });
+
+            close2FAModalBtn?.addEventListener('click', () => {
+                modal2FA.style.display = 'none';
+                twoFAMessage.textContent = '';
+            });
+
+            // Video player events
+            videoPlayer?.addEventListener('timeupdate', () => {
+                const percent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+                document.querySelector('.progress-bar').style.width = `${percent}%`;
+            });
+
+            progressContainer?.addEventListener('click', (e) => {
+                const rect = progressContainer.getBoundingClientRect();
+                const newTime = ((e.clientX - rect.left) / rect.width) * videoPlayer.duration;
+                videoPlayer.currentTime = newTime;
+            });
+
+            // Device management
+            openDeviceModalBtn?.addEventListener('click', (e) => {
+                e.preventDefault();
+                deviceModal.style.display = 'block';
+                loadDevices();
+            });
+
+            closeDeviceModalBtn?.addEventListener('click', () => {
+                deviceModal.style.display = 'none';
+            });
+
+            // Global click handlers
+            document.body.addEventListener('click', (e) => {
+                if (e.target === deviceModal) deviceModal.style.display = 'none';
+                if (e.target === videoModal) closeVideoModal();
+                
+                const thumbnail = e.target.closest('.thumbnail');
+                if (thumbnail) {
+                    openVideoModal(thumbnail.dataset.videoUrl, thumbnail.dataset.title);
+                }
+            });
+        });
     </script>
 </body>
 </html>

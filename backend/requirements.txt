@@ -15,6 +15,9 @@ flask_restx
 webauthn
 flask-cors
 python-jose
+google-auth 
+google-auth-oauthlib
+requests
 git+https://github.com/supabase-community/supabase-py
 
 

@@ -9,6 +9,8 @@ from App.auth import auth_bp
 
 load_dotenv(dotenv_path=os.path.join(
     os.path.dirname(__file__), 'config', '.env'))
+CERT_FILE = 'cert.pem'
+KEY_FILE = 'key.pem'
 
 if __name__ == '__main__':
     init_db()
