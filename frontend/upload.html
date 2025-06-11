@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Video</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #141414;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+        }
+        form {
+            background: #000;
+            padding: 20px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 500px;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #333;
+            color: #fff;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-top: 15px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #e50914;
+            border: none;
+            color: #fff;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tải lên video (AES-GCM)</h1>
+    <form id="uploadForm">
+        <label for="title">Tiêu đề *</label>
+        <input id="title" type="text" required>
+
+        <label for="description">Mô tả</label>
+        <textarea id="description" rows="3"></textarea>
+
+        <label for="thumbnail_url">URL Thumbnail</label>
+        <input id="thumbnail_url" type="url" placeholder="https://example.com/thumbnail.jpg">
+
+        <label for="category">Danh mục</label>
+        <input id="category" type="text" placeholder="Ví dụ: action, comedy, drama">
+
+        <div class="checkbox-group">
+            <input id="is_featured" type="checkbox">
+            <label for="is_featured">Video nổi bật</label>
+        </div>
+
+        <label for="videoFile">File video *</label>
+        <input id="videoFile" type="file" accept="video/*" required>
+
+        <button type="submit">Upload</button>
+    </form>
+
+    <script>
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            alert('Vui lòng đăng nhập');
+            return;
+        }
+        const file = document.getElementById('videoFile').files[0];
+        if (!file) {
+            alert('Chọn file video');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', document.getElementById('title').value);
+        formData.append('description', document.getElementById('description').value);
+        formData.append('thumbnail_url', document.getElementById('thumbnail_url').value);
+        formData.append('category', document.getElementById('category').value);
+        formData.append('is_featured', document.getElementById('is_featured').checked.toString());
+        try {
+            await axios.post('http://127.0.0.1:8000/api/videos/upload_aes', formData, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+            alert('Upload thành công');
+        } catch (err) {
+            alert('Lỗi upload: ' + (err.response?.data?.message || err.message));
+        }
+    });
+    </script>
+</body>
+</html>

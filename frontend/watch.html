@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xem Video</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #141414;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+        video {
+            width: 100%;
+            max-width: 800px;
+            height: auto;
+            border-radius: 8px;
+        }
+        .video-info {
+            margin-top: 20px;
+            padding: 20px;
+            background: #000;
+            border-radius: 8px;
+        }
+        .video-list {
+            margin-top: 40px;
+            width: 100%;
+        }
+        .video-item {
+            background: #000;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .video-item:hover {
+            background: #333;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #e50914;
+            border: none;
+            color: #fff;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Xem Video</h1>
+        
+        <div id="videoPlayer" style="display: none;">
+            <video id="video" controls>
+                Your browser does not support the video tag.
+            </video>
+            <div class="video-info" id="videoInfo">
+                <h3 id="videoTitle"></h3>
+                <p id="videoDescription"></p>
+                <p id="videoCategory"></p>
+            </div>
+        </div>
+
+        <div class="video-list">
+            <h2>Danh sách video</h2>
+            <button onclick="loadVideos()">Tải danh sách video</button>
+            <div id="videoList"></div>
+        </div>
+    </div>
+
+    <script>
+    async function loadVideos() {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            alert('Vui lòng đăng nhập');
+            return;
+        }
+        
+        try {
+            const response = await axios.get('http://127.0.0.1:8000/api/videos', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const videoList = document.getElementById('videoList');
+            videoList.innerHTML = '';
+            
+            response.data.forEach(video => {
+                const videoItem = document.createElement('div');
+                videoItem.className = 'video-item';
+                videoItem.innerHTML = `
+                    <h4>${video.title}</h4>
+                    <p>${video.description || 'Không có mô tả'}</p>
+                    <p>Danh mục: ${video.category || 'Không phân loại'}</p>
+                    <button onclick="watchVideo(${video.id})">Xem video</button>
+                `;
+                videoList.appendChild(videoItem);
+            });
+        } catch (err) {
+            alert('Lỗi tải danh sách video: ' + (err.response?.data?.message || err.message));
+        }
+    }
+
+    async function watchVideo(videoId) {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            alert('Vui lòng đăng nhập');
+            return;
+        }
+        
+        try {
+            const response = await axios.get(`http://127.0.0.1:8000/api/videos/aes/${videoId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                responseType: 'blob'
+            });
+            
+            const video = document.getElementById('video');
+            const videoUrl = URL.createObjectURL(response.data);
+            video.src = videoUrl;
+            
+            // Hiển thị video player
+            document.getElementById('videoPlayer').style.display = 'block';
+            
+            // Cập nhật thông tin video (có thể cần API riêng để lấy metadata)
+            document.getElementById('videoTitle').textContent = `Video ID: ${videoId}`;
+            
+        } catch (err) {
+            alert('Lỗi xem video: ' + (err.response?.data?.message || err.message));
+        }
+    }
+
+    // Tải danh sách video khi trang load
+    window.onload = function() {
+        loadVideos();
+    };
+    </script>
+</body>
+</html> 
